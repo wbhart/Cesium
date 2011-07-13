@@ -11,6 +11,7 @@
  extern "C" {
 #endif
 
+#include "environment.h"
 #include "symbol.h"
 #include "types.h"
 
@@ -27,6 +28,7 @@ typedef struct ast_t {
    tag_t tag;
    sym_t * sym;
    type_t * type;
+   env_t * env;
    LLVMValueRef val;
 } ast_t;
 

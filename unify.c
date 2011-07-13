@@ -55,6 +55,17 @@ void type_subst_type(type_t ** tin, type_rel_t * rel)
     }
 }
 
+void subst_type(type_t ** tin)
+{
+    type_rel_t * rel = rel_assign;
+   
+    while (rel != NULL)
+    {
+        type_subst_type(tin, rel);
+        rel = rel->next;
+    }
+}
+
 void rels_subst(type_rel_t * rels, type_rel_t * rel)
 {
     while (rels != NULL)
@@ -149,9 +160,9 @@ void annotate_ast(ast_t * a)
             if (t->tag == AST_ASSIGNMENT)
             {
                 t->child->type = t->type;
-                bind_symbol(t->child->sym, t->type);
+                bind_symbol(t->child->sym, t->type, NULL);
             } else
-                bind_symbol(t->sym, t->type);
+                bind_symbol(t->sym, t->type, NULL);
             annotate_ast(t);
             t = t->next;
         }

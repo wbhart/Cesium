@@ -2,10 +2,21 @@
 #define EXCEPTION_H
 
 #include <setjmp.h>
+#include "backend.h"
 
-jmp_buf exc;
+#ifdef __cplusplus
+ extern "C" {
+#endif
 
-void exception(char * msg);
+extern jmp_buf exc;
+
+void exception(const char * msg);
+
+void jit_exception(jit_t * jit, const char * msg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
 

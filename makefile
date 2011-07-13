@@ -9,7 +9,7 @@ parser.c: greg parser.leg
 	greg-0.1/greg parser.leg -o parser.c
 
 symbol.o: symbol.h symbol.c
-	gcc -c $(CS_FLAGS) $(CS_INC) symbol.c -o symbol.o
+	g++ -c $(CS_FLAGS) $(CS_INC) symbol.c -o symbol.o
 
 ast.o: ast.h ast.c
 	gcc -c $(CS_FLAGS) $(CS_INC) ast.c -o ast.o
@@ -21,7 +21,7 @@ unify.o: unify.h unify.c
 	gcc -c $(CS_FLAGS) $(CS_INC) unify.c -o unify.o
 
 environment.o: environment.h environment.c
-	gcc -c $(CS_FLAGS) $(CS_INC) environment.c -o environment.o
+	g++ -c $(CS_FLAGS) $(CS_INC) environment.c -o environment.o
 
 backend.o: backend.h backend.c
 	g++ -c $(CS_FLAGS) $(CS_INC) backend.c -o backend.o

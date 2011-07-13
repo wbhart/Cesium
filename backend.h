@@ -9,7 +9,11 @@
 
 #include "ast.h"
 
-#define TRACE 0 /* prints lots of ast and llvm trace info */
+#ifdef __cplusplus
+ extern "C" {
+#endif
+
+#define TRACE 1 /* prints lots of ast and llvm trace info */
 
 /* Are we on a 32 or 64 bit machine */
 #if ULONG_MAX == 4294967295U
@@ -73,6 +77,10 @@ void llvm_functions(jit_t * jit);
    jit->function = __function_save; \
    jit->builder = __builder_save; \
    } while (0)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
 

@@ -1,17 +1,18 @@
 #ifndef ENVIRONMENT_H
 #define ENVIRONMENT_H
 
+#include "symbol.h"
+#include "types.h"
+
 #ifdef __cplusplus
  extern "C" {
 #endif
-
-#include "symbol.h"
-#include "types.h"
 
 typedef struct bind_t
 {
    sym_t * sym;
    type_t * type;
+   LLVMValueRef val;
    struct bind_t * next;
 } bind_t;
 
@@ -21,11 +22,13 @@ typedef struct env_t
    struct env_t * next;
 } env_t;
 
-env_t * current_scope;
+extern env_t * current_scope;
 
 void scope_init(void);
 
-void bind_symbol(sym_t * sym, type_t * type);
+int scope_is_global(void);
+
+void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val);
 
 bind_t * find_symbol(sym_t * sym);
 

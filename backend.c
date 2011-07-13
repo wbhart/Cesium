@@ -3,7 +3,10 @@
 #include <stdlib.h>
 #include <math.h>
 
+#include "environment.h"
+#include "exception.h"
 #include "backend.h"
+#include "unify.h"
 #include "gc.h"
 
 #include <llvm-c/Core.h>  
@@ -237,6 +240,26 @@ void llvm_cleanup(jit_t * jit)
     jit->false_str = NULL;
 }
 
+/* Convert a typ to an LLVMTypeRef */
+LLVMTypeRef typ_to_llvm(typ_t typ)
+{
+   switch (typ)
+   {
+      case DOUBLE:
+         return LLVMDoubleType();
+      case INT:
+         return LLVMWordType();
+      case BOOL:
+         return LLVMInt1Type();
+      case STRING:
+         return LLVMPointerType(LLVMInt8Type(), 0);
+      case CHAR:
+         return LLVMInt8Type();
+      case NIL:
+         return LLVMVoidType();
+   }
+}
+
 /*
    Jit an int literal
 */
@@ -354,6 +377,91 @@ int exec_binary(exec_plus, LLVMBuildFAdd, LLVMBuildAdd, "add")
 int exec_binary(exec_minus, LLVMBuildFSub, LLVMBuildSub, "sub")
 
 /*
+   Load an identifier
+*/
+int exec_load(jit_t * jit, ast_t * ast)
+{
+    bind_t * bind = find_symbol(ast->sym);
+    if (bind->val == NULL)
+        jit_exception(jit, "Use of uninitialised value\n");
+    ast->type = bind->type;
+    ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
+    
+    return 0;
+}
+
+/*
+   Find an identifier
+*/
+int exec_ident(jit_t * jit, ast_t * ast)
+{
+    bind_t * bind = find_symbol(ast->sym);
+
+    if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
+    {
+        subst_type(&bind->type); /* fill in the type */
+
+        if (bind->type->typ != TYPEVAR) /* if we now know what it is */
+        {
+            LLVMTypeRef type = typ_to_llvm(bind->type->typ);
+                
+            if (scope_is_global()) /* variable is global */
+                bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);             
+            else
+                bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
+
+            LLVMSetInitializer(bind->val, LLVMGetUndef(type));
+        } 
+    }
+        
+    ast->type = bind->type;
+    ast->val = bind->val;
+    
+    return 0;
+}
+
+/*
+   Jit a variable assignment
+*/
+int exec_assignment(jit_t * jit, ast_t * ast)
+{
+    ast_t * id = ast->child;
+    ast_t * exp = ast->child->next;
+    
+    exec_ident(jit, id);
+    exec_ast(jit, exp);
+
+    LLVMBuildStore(jit->builder, exp->val, id->val);
+
+    ast->val = exp->val;
+    ast->type = exp->type;
+
+    return 0;
+}
+
+/*
+   Declare local/global variables
+*/
+int exec_varassign(jit_t * jit, ast_t * ast)
+{
+    ast_t * c = ast->child;
+
+    while (c != NULL)
+    {
+        if (c->tag == AST_IDENT)
+            exec_ident(jit, c);
+        else /* AST_ASSIGNMENT */
+            exec_assignment(jit, c);
+                    
+        c = c->next;
+    }
+
+    ast->type = t_nil;
+
+    return 0;
+}
+
+/*
    As we traverse the ast we dispatch on ast tag to various jit 
    functions defined above
 */
@@ -371,6 +479,12 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_plus(jit, ast);
     case AST_MINUS:
         return exec_minus(jit, ast);
+    case AST_VARASSIGN:
+        return exec_varassign(jit, ast);
+    case AST_ASSIGNMENT:
+        return exec_assignment(jit, ast);
+    case AST_IDENT:
+        return exec_load(jit, ast);
     default:
         ast->type = t_nil;
         return 0;
