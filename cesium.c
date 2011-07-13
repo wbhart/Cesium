@@ -19,12 +19,6 @@
 #include "backend.h"
 #include "exception.h"
 
-extern LLVMExecutionEngineRef engine;  
-extern LLVMPassManagerRef pass;
-extern LLVMModuleRef module;
-extern LLVMBuilderRef builder;
-extern LLVMValueRef function;
-
 extern jmp_buf exc;
 
 int main(void) {
@@ -38,7 +32,8 @@ int main(void) {
     ast_init();
     type_init();
     scope_init();
-    llvm_init();
+
+    jit_t * jit = llvm_init();
 
     yyinit(&g);
 
@@ -66,7 +61,7 @@ int main(void) {
                 print_assigns(rel_assign);
              if (root->tag != AST_FNDEC)
                 check_free(rel_assign);
-             exec_root(root);
+             exec_root(jit, root);
            }
         } else if (jval == 1)
               root = NULL;
@@ -76,7 +71,7 @@ int main(void) {
     }
   
     yydeinit(&g);
-    llvm_cleanup();
+    llvm_cleanup(jit);
 
     return 0;
 }

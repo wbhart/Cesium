@@ -18,47 +18,60 @@
 #define LLVMWordType() LLVMInt64Type()
 #endif
 
-void llvm_init(void);
+typedef struct jit_t
+{
+    LLVMBuilderRef builder;
+    LLVMValueRef function;
+    LLVMExecutionEngineRef engine;  
+    LLVMPassManagerRef pass;
+    LLVMModuleRef module;
+    LLVMValueRef fmt_str;
+    LLVMValueRef nil_str;
+    LLVMValueRef true_str;
+    LLVMValueRef false_str;
+} jit_t;
 
-void llvm_reset(void);
+jit_t * llvm_init(void);
 
-void llvm_cleanup(void);
+void llvm_reset(jit_t * jit);
 
-int exec_ast(ast_t * ast);
+void llvm_cleanup(jit_t * jit);
 
-void exec_root(ast_t * ast);
+int exec_ast(jit_t * jit, ast_t * ast);
 
-void llvm_functions(void);
+void exec_root(jit_t * jit, ast_t * ast);
+
+void llvm_functions(jit_t * jit);
 
 /* Set things up so we can begin jit'ing */
 #define START_EXEC \
    LLVMBuilderRef __builder_save; \
    LLVMValueRef __function_save; \
    do { \
-   __builder_save = builder; \
-   builder = LLVMCreateBuilder(); \
-   __function_save = function; \
+   __builder_save = jit->builder; \
+   jit->builder = LLVMCreateBuilder(); \
+   __function_save = jit->function; \
    LLVMTypeRef __args[] = { }; \
    LLVMTypeRef __retval = LLVMVoidType(); \
    LLVMTypeRef __fn_type = LLVMFunctionType(__retval, __args, 0, 0); \
-   function = LLVMAddFunction(module, "exec", __fn_type); \
-   LLVMBasicBlockRef __entry = LLVMAppendBasicBlock(function, "entry"); \
-   LLVMPositionBuilderAtEnd(builder, __entry); \
+   jit->function = LLVMAddFunction(jit->module, "exec", __fn_type); \
+   LLVMBasicBlockRef __entry = LLVMAppendBasicBlock(jit->function, "entry"); \
+   LLVMPositionBuilderAtEnd(jit->builder, __entry); \
    } while (0)
    
 /* Run the jit'd code */
 #define END_EXEC \
    do { \
-   LLVMBuildRetVoid(builder); \
-   LLVMRunFunctionPassManager(pass, function); \
+   LLVMBuildRetVoid(jit->builder); \
+   LLVMRunFunctionPassManager(jit->pass, jit->function); \
    if (TRACE) \
-      LLVMDumpModule(module); \
+      LLVMDumpModule(jit->module); \
    LLVMGenericValueRef __exec_args[] = {}; \
-   LLVMRunFunction(engine, function, 0, __exec_args); \
-   LLVMDeleteFunction(function); \
-   LLVMDisposeBuilder(builder); \
-   function = __function_save; \
-   builder = __builder_save; \
+   LLVMRunFunction(jit->engine, jit->function, 0, __exec_args); \
+   LLVMDeleteFunction(jit->function); \
+   LLVMDisposeBuilder(jit->builder); \
+   jit->function = __function_save; \
+   jit->builder = __builder_save; \
    } while (0)
 
 #endif

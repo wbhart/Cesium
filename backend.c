@@ -12,47 +12,28 @@
 #include <llvm-c/Target.h>  
 #include <llvm-c/Transforms/Scalar.h> 
 
-LLVMExecutionEngineRef engine;  
-LLVMPassManagerRef pass;
-LLVMModuleRef module;
-LLVMBuilderRef builder;
-LLVMValueRef function;
-
-LLVMValueRef fmtstr;
-LLVMValueRef nilstr;
-
 /* 
    Tell LLVM about some external library functions so we can call them 
    and about some constants we want to use from jit'd code
 */
-void llvm_functions(void)
+void llvm_functions(jit_t * jit)
 {
    LLVMTypeRef args[2];
    LLVMTypeRef fntype; 
    LLVMTypeRef ret;
    LLVMValueRef fn;
 
-   /* set up a nil string */
-   char * str = (char *) GC_MALLOC(4);
-   str[0] = 'n';
-   str[1] = 'i';
-   str[2] = 'l';
-   str[3] = '\0';
-   START_EXEC;
-   nilstr = LLVMBuildGlobalStringPtr(builder, str, "nil");
-   END_EXEC;
-
    /* patch in the printf function */
    args[0] = LLVMPointerType(LLVMInt8Type(), 0);
    ret = LLVMWordType();
    fntype = LLVMFunctionType(ret, args, 1, 1);
-   fn = LLVMAddFunction(module, "printf", fntype);
+   fn = LLVMAddFunction(jit->module, "printf", fntype);
 
    /* patch in the exit function */
    args[0] = LLVMWordType();
    ret = LLVMVoidType();
    fntype = LLVMFunctionType(ret, args, 1, 0);
-   fn = LLVMAddFunction(module, "exit", fntype);
+   fn = LLVMAddFunction(jit->module, "exit", fntype);
 }
 
 /* count parameters as represented by %'s in format string */
@@ -77,26 +58,25 @@ int count_params(const char * fmt)
    print it on the jit side. So this is our runtime printf for 
    printing LLVMValRef's from jit'd code.
 */
-void llvm_printf(const char * fmt, ...)
+void llvm_printf(jit_t * jit, const char * fmt, ...)
 {
    int i, count = count_params(fmt);
    va_list ap;
    
    /* get printf function */
-   LLVMValueRef fn = LLVMGetNamedFunction(module, "printf");
+   LLVMValueRef fn = LLVMGetNamedFunction(jit->module, "printf");
    LLVMSetFunctionCallConv(fn, LLVMCCallConv);
    
    /* Add a global variable for format string */
    LLVMValueRef str = LLVMConstString(fmt, strlen(fmt), 0);
-   LLVMValueRef str_val = LLVMAddGlobal(module, LLVMTypeOf(str), "fmt");
-   LLVMSetInitializer(str_val, str);
-   LLVMSetGlobalConstant(str_val, 1);
-   LLVMSetLinkage(str_val, LLVMInternalLinkage);
-   fmtstr = str_val;
+   jit->fmt_str = LLVMAddGlobal(jit->module, LLVMTypeOf(str), "fmt");
+   LLVMSetInitializer(jit->fmt_str, str);
+   LLVMSetGlobalConstant(jit->fmt_str, 1);
+   LLVMSetLinkage(jit->fmt_str, LLVMInternalLinkage);
    
    /* build variadic parameter list for printf */
    LLVMValueRef indices[2] = { LLVMConstInt(LLVMWordType(), 0, 0), LLVMConstInt(LLVMWordType(), 0, 0) };
-   LLVMValueRef GEP = LLVMBuildGEP(builder, str_val, indices, 2, "str");
+   LLVMValueRef GEP = LLVMBuildGEP(jit->builder, jit->fmt_str, indices, 2, "str");
    LLVMValueRef args[count + 1];
    args[0] = GEP;
    
@@ -108,7 +88,7 @@ void llvm_printf(const char * fmt, ...)
    va_end(ap);
 
    /* build call to printf */
-   LLVMValueRef call_printf = LLVMBuildCall(builder, fn, args, count + 1, "printf");
+   LLVMValueRef call_printf = LLVMBuildCall(jit->builder, fn, args, count + 1, "printf");
    LLVMSetTailCall(call_printf, 1);
    LLVMAddInstrAttribute(call_printf, 0, LLVMNoUnwindAttribute);
    LLVMAddInstrAttribute(call_printf, 1, LLVMNoAliasAttribute);
@@ -119,48 +99,35 @@ void llvm_printf(const char * fmt, ...)
    the strings "true" and "false". To do this from the jit side we
    need this function.
 */
-void llvm_printbool(LLVMValueRef obj)
+void llvm_printbool(jit_t * jit, LLVMValueRef obj)
 {
-    static int inited = 0;
-    
-    static LLVMValueRef truestr;
-    static LLVMValueRef falsestr;
-    
-    /* set up the "true" and "false" strings */
-    if (!inited)
-    {
-        truestr = LLVMBuildGlobalStringPtr(builder, "true", "true");
-        falsestr = LLVMBuildGlobalStringPtr(builder, "false", "false");
-       inited = 1;
-    }
-
     /* jit an if statement which checks for true/false */
     LLVMBasicBlockRef i;
     LLVMBasicBlockRef b1;
     LLVMBasicBlockRef b2;
     LLVMBasicBlockRef e;
 
-    i = LLVMAppendBasicBlock(function, "if");
-    b1 = LLVMAppendBasicBlock(function, "ifbody");
-    b2 = LLVMAppendBasicBlock(function, "ebody");
-    e = LLVMAppendBasicBlock(function, "ifend");
-    LLVMBuildBr(builder, i);
-    LLVMPositionBuilderAtEnd(builder, i); 
+    i = LLVMAppendBasicBlock(jit->function, "if");
+    b1 = LLVMAppendBasicBlock(jit->function, "ifbody");
+    b2 = LLVMAppendBasicBlock(jit->function, "ebody");
+    e = LLVMAppendBasicBlock(jit->function, "ifend");
+    LLVMBuildBr(jit->builder, i);
+    LLVMPositionBuilderAtEnd(jit->builder, i); 
 
-    LLVMBuildCondBr(builder, obj, b1, b2);
-    LLVMPositionBuilderAtEnd(builder, b1);
+    LLVMBuildCondBr(jit->builder, obj, b1, b2);
+    LLVMPositionBuilderAtEnd(jit->builder, b1);
 
     /* print "true" */
-    llvm_printf("%s", truestr);
+    llvm_printf(jit, "%s", jit->true_str);
 
-    LLVMBuildBr(builder, e);
-    LLVMPositionBuilderAtEnd(builder, b2);  
+    LLVMBuildBr(jit->builder, e);
+    LLVMPositionBuilderAtEnd(jit->builder, b2);  
 
     /* print "false" */
-    llvm_printf("%s", falsestr);
+    llvm_printf(jit, "%s", jit->false_str);
 
-    LLVMBuildBr(builder, e);
-    LLVMPositionBuilderAtEnd(builder, e);
+    LLVMBuildBr(jit->builder, e);
+    LLVMPositionBuilderAtEnd(jit->builder, e);
 }
 
 /*
@@ -168,27 +135,27 @@ void llvm_printbool(LLVMValueRef obj)
    the result of expressions that are evaluated, before returning from
    a jit'd expression.
 */
-void print_obj(typ_t typ, LLVMValueRef obj)
+void print_obj(jit_t * jit, typ_t typ, LLVMValueRef obj)
 {
    switch (typ)
    {
       case INT:
-         llvm_printf("%ld", obj);
+         llvm_printf(jit, "%ld", obj);
          break;
       case CHAR:
-         llvm_printf("%c", obj);
+         llvm_printf(jit, "%c", obj);
          break;
       case DOUBLE:
-         llvm_printf("%.5g", obj);
+         llvm_printf(jit, "%.5g", obj);
          break;
       case STRING:
-         llvm_printf("\"%s\"", obj);
+         llvm_printf(jit, "\"%s\"", obj);
          break;
       case BOOL:
-         llvm_printbool(obj);
+         llvm_printbool(jit, obj);
          break;
       case NIL:
-         llvm_printf("%s", nilstr);
+         llvm_printf(jit, "%s", jit->nil_str);
          break;
    }
 }
@@ -196,19 +163,22 @@ void print_obj(typ_t typ, LLVMValueRef obj)
 /*
    Initialise the LLVM JIT
 */
-void llvm_init(void)
+jit_t * llvm_init(void)
 {
     char * error = NULL;
-      
+    
+    /* create jit struct */
+    jit_t * jit = (jit_t *) GC_MALLOC(sizeof(jit_t));
+
     /* Jit setup */
     LLVMLinkInJIT();
     LLVMInitializeNativeTarget();
 
     /* Create module */
-    module = LLVMModuleCreateWithName("cesium");
+    jit->module = LLVMModuleCreateWithName("cesium");
 
     /* Create JIT engine */
-    if (LLVMCreateJITCompilerForModule(&engine, module, 2, &error) != 0) 
+    if (LLVMCreateJITCompilerForModule(&(jit->engine), jit->module, 2, &error) != 0) 
     {   
        fprintf(stderr, "%s\n", error);  
        LLVMDisposeMessage(error);  
@@ -216,46 +186,61 @@ void llvm_init(void)
     } 
    
     /* Create optimisation pass pipeline */
-    pass = LLVMCreateFunctionPassManagerForModule(module);  
-    LLVMAddTargetData(LLVMGetExecutionEngineTargetData(engine), pass);  
-    LLVMAddConstantPropagationPass(pass);  
-    LLVMAddInstructionCombiningPass(pass);  
-    LLVMAddPromoteMemoryToRegisterPass(pass);  
-    LLVMAddGVNPass(pass);  
-    LLVMAddCFGSimplificationPass(pass);
+    jit->pass = LLVMCreateFunctionPassManagerForModule(jit->module);  
+    LLVMAddTargetData(LLVMGetExecutionEngineTargetData(jit->engine), jit->pass);  
+    LLVMAddConstantPropagationPass(jit->pass);  
+    LLVMAddInstructionCombiningPass(jit->pass);  
+    LLVMAddPromoteMemoryToRegisterPass(jit->pass);  
+    LLVMAddGVNPass(jit->pass);  
+    LLVMAddCFGSimplificationPass(jit->pass);
 
     /* link in external functions callable from jit'd code */
-    llvm_functions();
+    llvm_functions(jit);
 
-    /* initialise some globals */
-    fmtstr = NULL;
-    nilstr = NULL;
+    /* initialise some strings */
+    START_EXEC;
+    jit->fmt_str = NULL;
+    jit->true_str = LLVMBuildGlobalStringPtr(jit->builder, "true", "true");
+    jit->false_str = LLVMBuildGlobalStringPtr(jit->builder, "false", "false");
+    jit->nil_str = LLVMBuildGlobalStringPtr(jit->builder, "nil", "nil");
+    END_EXEC;
+
+    return jit;
 }
 
 /*
    If something goes wrong after partially jit'ing something we need
    to clean up.
 */
-void llvm_reset(void)
+void llvm_reset(jit_t * jit)
 {
-    LLVMDeleteFunction(function);
-    LLVMDisposeBuilder(builder);
+    LLVMDeleteFunction(jit->function);
+    LLVMDisposeBuilder(jit->builder);
+    jit->function = NULL;
+    jit->builder = NULL;
 }
 
 /*
    Clean up LLVM on exit from Cesium
 */
-void llvm_cleanup(void)
+void llvm_cleanup(jit_t * jit)
 {
     /* Clean up */
-    LLVMDisposePassManager(pass);  
-    LLVMDisposeExecutionEngine(engine); 
+    LLVMDisposePassManager(jit->pass);  
+    LLVMDisposeExecutionEngine(jit->engine); 
+    jit->pass = NULL;
+    jit->engine = NULL;
+    jit->module = NULL;
+    jit->fmt_str = NULL;
+    jit->nil_str = NULL;
+    jit->true_str = NULL;
+    jit->false_str = NULL;
 }
 
 /*
    Jit an int literal
 */
-int exec_int(ast_t * ast)
+int exec_int(jit_t * jit, ast_t * ast)
 {
     long num = atol(ast->sym->name);
     
@@ -267,7 +252,7 @@ int exec_int(ast_t * ast)
 /*
    Jit a double literal
 */
-int exec_double(ast_t * ast)
+int exec_double(jit_t * jit, ast_t * ast)
 {
     double num = atof(ast->sym->name);
     
@@ -280,7 +265,7 @@ int exec_double(ast_t * ast)
    Jit a string literali, being careful to replace special 
    characters with their ascii equivalent
 */
-int exec_string(ast_t * ast)
+int exec_string(jit_t * jit, ast_t * ast)
 {
     char * name = ast->sym->name;
          
@@ -332,7 +317,7 @@ int exec_string(ast_t * ast)
         length = length - bs;
         str[length] = '\0';
             
-        ast->sym->val = LLVMBuildGlobalStringPtr(builder, str, "string");
+        ast->sym->val = LLVMBuildGlobalStringPtr(jit->builder, str, "string");
     }
 
     ast->val = ast->sym->val;
@@ -344,23 +329,23 @@ int exec_string(ast_t * ast)
    We have a number of binary ops we want to jit and they
    all look the same, so define a macro for them.
 */
-#define exec_binary(__name, __fop, __iop, __str)   \
-__name(ast_t * ast)                                \
-{                                                  \
-    ast_t * expr1 = ast->child;                    \
-    ast_t * expr2 = expr1->next;                   \
-                                                   \
-    exec_ast(expr1);                               \
-    exec_ast(expr2);                               \
-                                                   \
-    LLVMValueRef v1 = expr1->val, v2 = expr2->val; \
-                                                   \
-    if (ast->type == t_double)                     \
-       ast->val = __fop(builder, v1, v2, __str);   \
-    else                                           \
-       ast->val = __iop(builder, v1, v2, __str);   \
-                                                   \
-    return 0;                                      \
+#define exec_binary(__name, __fop, __iop, __str)        \
+__name(jit_t * jit, ast_t * ast)                        \
+{                                                       \
+    ast_t * expr1 = ast->child;                         \
+    ast_t * expr2 = expr1->next;                        \
+                                                        \
+    exec_ast(jit, expr1);                               \
+    exec_ast(jit, expr2);                               \
+                                                        \
+    LLVMValueRef v1 = expr1->val, v2 = expr2->val;      \
+                                                        \
+    if (ast->type == t_double)                          \
+       ast->val = __fop(jit->builder, v1, v2, __str);   \
+    else                                                \
+       ast->val = __iop(jit->builder, v1, v2, __str);   \
+                                                        \
+    return 0;                                           \
 }
 
 /* Jit add, sub, .... ops */
@@ -372,32 +357,35 @@ int exec_binary(exec_minus, LLVMBuildFSub, LLVMBuildSub, "sub")
    As we traverse the ast we dispatch on ast tag to various jit 
    functions defined above
 */
-int exec_ast(ast_t * ast)
+int exec_ast(jit_t * jit, ast_t * ast)
 {
     switch (ast->tag)
     {
     case AST_INT:
-        return exec_int(ast);
+        return exec_int(jit, ast);
     case AST_DOUBLE:
-        return exec_double(ast);
+        return exec_double(jit, ast);
     case AST_STRING:
-        return exec_string(ast);
+        return exec_string(jit, ast);
     case AST_PLUS:
-        return exec_plus(ast);
+        return exec_plus(jit, ast);
     case AST_MINUS:
-        return exec_minus(ast);
+        return exec_minus(jit, ast);
+    default:
+        ast->type = t_nil;
+        return 0;
     }
 }
 
 /* We start traversing the ast to do jit'ing here */
-void exec_root(ast_t * ast)
+void exec_root(jit_t * jit, ast_t * ast)
 {
     /* Traverse the ast jit'ing everything, then run the jit'd code */
     START_EXEC;
          
-    exec_ast(ast);
+    exec_ast(jit, ast);
 
-    print_obj(ast->type->typ, ast->val);
+    print_obj(jit, ast->type->typ, ast->val);
     
     END_EXEC;
          
@@ -405,10 +393,10 @@ void exec_root(ast_t * ast)
        If our jit side print_obj had to create a format string
        clean it up now that we've executed the jit'd code.
     */
-    if (fmtstr)
+    if (jit->fmt_str)
     {
-        LLVMDeleteGlobal(fmtstr);
-        fmtstr = NULL;
+        LLVMDeleteGlobal(jit->fmt_str);
+        jit->fmt_str = NULL;
     }
 }
 
