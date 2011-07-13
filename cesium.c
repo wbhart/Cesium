@@ -26,7 +26,6 @@ extern LLVMBuilderRef builder;
 extern LLVMValueRef function;
 
 extern jmp_buf exc;
-extern jmp_buf ex;
 
 int main(void) {
     GC_INIT();
