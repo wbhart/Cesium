@@ -31,3 +31,10 @@ exception.o: exception.h exception.c
 
 greg:
 	$(MAKE) -C greg-0.1
+
+clean:
+	rm *.o
+	rm greg-0.1/*.o
+	rm cs
+	rm greg-0.1/greg
+
