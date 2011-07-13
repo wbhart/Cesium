@@ -19,7 +19,7 @@ LLVMBuilderRef builder;
 LLVMValueRef function;
 
 LLVMValueRef fmtstr;
-LLVMValueRef nil_str;
+LLVMValueRef nilstr;
 
 void llvm_functions(void)
 {
@@ -34,7 +34,7 @@ void llvm_functions(void)
    str[2] = 'l';
    str[3] = '\0';
    START_EXEC;
-   nil_str = LLVMBuildGlobalStringPtr(builder, str, "nil");
+   nilstr = LLVMBuildGlobalStringPtr(builder, str, "nil");
    END_EXEC;
 
    args[0] = LLVMPointerType(LLVMInt8Type(), 0);
@@ -162,7 +162,7 @@ void print_obj(typ_t typ, LLVMValueRef obj)
          llvm_printbool(obj);
          break;
       case NIL:
-         llvm_printf("%s", nil_str);
+         llvm_printf("%s", nilstr);
          break;
    }
 }
@@ -198,6 +198,10 @@ void llvm_init(void)
 
     /* link in external functions callable from jit'd code */
     llvm_functions();
+
+    /* initialise some globals */
+    fmtstr = NULL;
+    nilstr = NULL;
 }
 
 void llvm_reset(void)
