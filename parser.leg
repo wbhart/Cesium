@@ -1,0 +1,140 @@
+%{
+#include "ast.h"
+#include "symbol.h"
+#include "exception.h"
+
+#define YYSTYPE ast_t *
+
+#define YY_INPUT(buf, result, max_size, core)         \
+{                                                     \
+  int yyc = fgetc(stdin);                             \
+  if (yyc == EOF) longjmp(exc, 2);                     \
+  result = (EOF == yyc) ? 0 : (*(buf)= yyc, 1);       \
+}
+%}
+
+start         = Spacing r:Statement ';' { root = r; } 
+                 | ( !EOL .)* EOL { root = NULL; printf("Syntax error\n"); }
+Statement     = Symtab { print_sym_tab(); }
+                 | VarStmt
+                 | Expression 
+VarStmt       = Var r:VarAssign 
+                 ( Comma s:VarAssign 
+              {
+                 s->next = r;
+                 r = s;
+              }
+                 )*
+              {
+                 r = ast_reverse(r);
+                 $$ = ast_unary(r, AST_VARASSIGN);
+              }
+
+VarAssign     = Assignment | Identifier
+Assignment    = r:Identifier Equals s:AssignExp
+              {
+                 r->next = s;
+                 $$ = ast_unary(r, AST_ASSIGNMENT);
+              }
+Expression    = AssignExp
+AssignExp     = Assignment
+                 | ( Identifier PlusEQ AssignExp )
+                 | ( Identifier MinusEQ AssignExp )
+                 | ( Identifier TimesEQ AssignExp )
+                 | ( Identifier DivEQ AssignExp )
+                 | ( Identifier ModEQ AssignExp )
+                 | ( Identifier AndEQ AssignExp )
+                 | ( Identifier OrEQ AssignExp )
+                 | ( Identifier XorEQ AssignExp )
+                 | ( Identifier ShrEQ AssignExp )
+                 | ( Identifier ShlEQ AssignExp )
+                 | Infix100
+Infix100      = ( Infix90 ( LogOr Infix90 )* )
+Infix90       = ( Infix80 ( LogAnd Infix80 )* )
+Infix80       = ( Infix70 ( BitOr Infix70 )* )
+Infix70       = ( Infix60 ( BitXor Infix60 )* )
+Infix60       = ( Infix50 ( BitAnd Infix50 )* )
+Infix50       = ( Infix40 ( ( EQ | NE ) Infix40 )* )
+Infix40       = ( Infix30 ( ( LE | GE | LT | GT ) Infix30 )* )
+Infix30       = ( Infix20 ( ( Lsh | Rsh) Infix20 )* )
+Infix20       = ( r:Infix10 ( ( o:Plus | o:Minus ) 
+                  s:Infix10 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
+Infix10       = ( UnaryExp ( ( Times | Div | Mod ) UnaryExp )* )
+UnaryExp      = ( Incr Identifier ) | ( Decr Identifier ) 
+                 | ( Plus UnaryExp ) | ( Minus UnaryExp )
+                 | ( LogNot UnaryExp ) | ( BitNot UnaryExp ) | PostfixExp 
+PostfixExp    = ( r:Identifier Incr ) { $$ = ast_unary(r, AST_POST_INC); }
+                 | ( r:Identifier Decr ) { $$ = ast_unary(r, AST_POST_DEC); }
+                 | Primary 
+Primary       = ( Identifier | Double | IntConst | String 
+                 | ( LParen Expression RParen ) )
+
+Var           = 'var' Spacing
+Symtab        = 'symtab' Spacing
+Comma         = ',' Spacing
+Identifier    = < IdentStart IdentCont* > Spacing
+              {
+                 sym_t * sym = sym_lookup(yytext);
+                 $$ = ast_symbol(sym, AST_IDENT);
+              }
+IdentStart    = [a-zA-Z_]
+IdentCont     = IdentStart | [0-9]
+IntConst      = < Integer 'u'? ( 'b' | 'w' | 'd' | 'q' )? > Spacing
+              {
+                 sym_t * sym = sym_lookup(yytext);
+                 $$ = ast_symbol(sym, AST_INT);
+              }
+Integer       = < ( [1-9] [0-9]* | '0' ) >
+String        = < Quotes ( SlashQuotes | ( !Quotes . ) )* Quotes > Spacing
+              {
+                 sym_t * sym = sym_lookup(yytext);
+                 $$ = ast_symbol(sym, AST_STRING);
+              }
+Double        = < Integer '.' [0-9]+ ( ( 'e' | 'E' ) '-'? Integer )? ( 'f' | 'd' )? > Spacing
+              {
+                 sym_t * sym = sym_lookup(yytext);
+                 $$ = ast_symbol(sym, AST_DOUBLE);
+              }
+Spacing       = ( Space | Comment )*
+Space         = ' ' | '\t' | EOL
+Comment       = Comment1 | Comment2
+Comment1      = '//' ( !EOL . )* EOL 
+Comment2      = '/*' ( !'*/' . )* '*/'
+LParen        = '(' Spacing
+RParen        = ')' Spacing
+Incr          = '++' Spacing
+Decr          = '--' Spacing
+Plus          = '+' Spacing { $$ = op_plus; }
+Minus         = '-' Spacing { $$ = op_minus; }
+LogNot        = '!' Spacing
+LogAnd        = '&&' Spacing
+LogOr         = '||' Spacing
+BitNot        = '~' Spacing
+BitAnd        = '&' Spacing
+BitXor        = '^|' Spacing
+BitOr         = '|' Spacing
+Times         = '*' Spacing
+Div           = '/' Spacing
+Mod           = '%' Spacing
+Lsh           = '<<' Spacing
+Rsh           = '>>' Spacing
+LT            = '<' Spacing
+GT            = '>' Spacing
+LE            = '<=' Spacing
+GE            = '>=' Spacing
+EQ            = '==' Spacing
+NE            = '!=' Spacing
+Equals        = '=' Spacing
+PlusEQ        = '+=' Spacing
+MinusEQ       = '-=' Spacing
+TimesEQ       = '*=' Spacing
+DivEQ         = '/=' Spacing
+ModEQ         = '%=' Spacing
+AndEQ         = '&=' Spacing
+OrEQ          = '|=' Spacing
+XorEQ         = '^|=' Spacing
+ShrEQ         = '>>=' Spacing
+ShlEQ         = '<<=' Spacing
+Quotes        = '"'
+SlashQuotes   = '\\\"'
+EOL           = '\r\n' | '\n' | '\r'
