@@ -24,7 +24,7 @@ void llvm_reset(void);
 
 void llvm_cleanup(void);
 
-void exec_ast(ast_t * ast);
+int exec_ast(ast_t * ast);
 
 void exec_root(ast_t * ast);
 
