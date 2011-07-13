@@ -177,7 +177,7 @@ void check_free(type_rel_t * ass)
     while (ass != NULL)
     {
         if (ass->t2->typ == TYPEVAR)
-           exception("Unable to resolve types : possibly unitialised data\n");
+           exception("Unable to resolve types : possibly uninitialised data\n");
         ass = ass->next;
     }
 }
