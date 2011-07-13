@@ -9,8 +9,9 @@
 
 #include "ast.h"
 
-#define TRACE 0
+#define TRACE 0 /* prints lots of ast and llvm trace info */
 
+/* Are we on a 32 or 64 bit machine */
 #if ULONG_MAX == 4294967295U
 #define LLVMWordType() LLVMInt32Type()
 #else
@@ -29,6 +30,7 @@ void exec_root(ast_t * ast);
 
 void llvm_functions(void);
 
+/* Set things up so we can begin jit'ing */
 #define START_EXEC \
    LLVMBuilderRef __builder_save; \
    LLVMValueRef __function_save; \
@@ -44,6 +46,7 @@ void llvm_functions(void);
    LLVMPositionBuilderAtEnd(builder, __entry); \
    } while (0)
    
+/* Run the jit'd code */
 #define END_EXEC \
    do { \
    LLVMBuildRetVoid(builder); \
