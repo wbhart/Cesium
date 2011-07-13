@@ -19,8 +19,12 @@ LLVMBuilderRef builder;
 LLVMValueRef function;
 
 LLVMValueRef fmtstr;
-LLVMValueRef nil_str;
+LLVMValueRef nilstr;
 
+/* 
+   Tell LLVM about some external library functions so we can call them 
+   and about some constants we want to use from jit'd code
+*/
 void llvm_functions(void)
 {
    LLVMTypeRef args[2];
@@ -28,20 +32,23 @@ void llvm_functions(void)
    LLVMTypeRef ret;
    LLVMValueRef fn;
 
+   /* set up a nil string */
    char * str = (char *) GC_MALLOC(4);
    str[0] = 'n';
    str[1] = 'i';
    str[2] = 'l';
    str[3] = '\0';
    START_EXEC;
-   nil_str = LLVMBuildGlobalStringPtr(builder, str, "nil");
+   nilstr = LLVMBuildGlobalStringPtr(builder, str, "nil");
    END_EXEC;
 
+   /* patch in the printf function */
    args[0] = LLVMPointerType(LLVMInt8Type(), 0);
    ret = LLVMWordType();
    fntype = LLVMFunctionType(ret, args, 1, 1);
    fn = LLVMAddFunction(module, "printf", fntype);
 
+   /* patch in the exit function */
    args[0] = LLVMWordType();
    ret = LLVMVoidType();
    fntype = LLVMFunctionType(ret, args, 1, 0);
@@ -64,7 +71,12 @@ int count_params(const char * fmt)
    return count;
 }
 
-/* runtime printf for LLVMValRef's */
+/* 
+   When an expression is evaluated it is a pain to pass it back out of
+   jit'd code and print the value returned by the expression. So we 
+   print it on the jit side. So this is our runtime printf for 
+   printing LLVMValRef's from jit'd code.
+*/
 void llvm_printf(const char * fmt, ...)
 {
    int i, count = count_params(fmt);
@@ -102,20 +114,27 @@ void llvm_printf(const char * fmt, ...)
    LLVMAddInstrAttribute(call_printf, 1, LLVMNoAliasAttribute);
 }
 
+/*
+   Printing booleans requires special attention. We want to print
+   the strings "true" and "false". To do this from the jit side we
+   need this function.
+*/
 void llvm_printbool(LLVMValueRef obj)
 {
     static int inited = 0;
     
-    static LLVMValueRef true_str;
-    static LLVMValueRef false_str;
+    static LLVMValueRef truestr;
+    static LLVMValueRef falsestr;
     
+    /* set up the "true" and "false" strings */
     if (!inited)
     {
-        true_str = LLVMBuildGlobalStringPtr(builder, "true", "true");
-        false_str = LLVMBuildGlobalStringPtr(builder, "false", "false");
+        truestr = LLVMBuildGlobalStringPtr(builder, "true", "true");
+        falsestr = LLVMBuildGlobalStringPtr(builder, "false", "false");
        inited = 1;
     }
 
+    /* jit an if statement which checks for true/false */
     LLVMBasicBlockRef i;
     LLVMBasicBlockRef b1;
     LLVMBasicBlockRef b2;
@@ -131,17 +150,24 @@ void llvm_printbool(LLVMValueRef obj)
     LLVMBuildCondBr(builder, obj, b1, b2);
     LLVMPositionBuilderAtEnd(builder, b1);
 
-    llvm_printf("%s", true_str);
+    /* print "true" */
+    llvm_printf("%s", truestr);
 
     LLVMBuildBr(builder, e);
     LLVMPositionBuilderAtEnd(builder, b2);  
 
-    llvm_printf("%s", false_str);
+    /* print "false" */
+    llvm_printf("%s", falsestr);
 
     LLVMBuildBr(builder, e);
     LLVMPositionBuilderAtEnd(builder, e);
 }
 
+/*
+   This jits a printf for various cesium typesi. We use it to print
+   the result of expressions that are evaluated, before returning from
+   a jit'd expression.
+*/
 void print_obj(typ_t typ, LLVMValueRef obj)
 {
    switch (typ)
@@ -160,14 +186,16 @@ void print_obj(typ_t typ, LLVMValueRef obj)
          break;
       case BOOL:
          llvm_printbool(obj);
-break;
+         break;
       case NIL:
-         llvm_printf("%s", nil_str);
+         llvm_printf("%s", nilstr);
          break;
    }
 }
 
-
+/*
+   Initialise the LLVM JIT
+*/
 void llvm_init(void)
 {
     char * error = NULL;
@@ -198,14 +226,25 @@ void llvm_init(void)
 
     /* link in external functions callable from jit'd code */
     llvm_functions();
+
+    /* initialise some globals */
+    fmtstr = NULL;
+    nilstr = NULL;
 }
 
+/*
+   If something goes wrong after partially jit'ing something we need
+   to clean up.
+*/
 void llvm_reset(void)
 {
     LLVMDeleteFunction(function);
     LLVMDisposeBuilder(builder);
 }
 
+/*
+   Clean up LLVM on exit from Cesium
+*/
 void llvm_cleanup(void)
 {
     /* Clean up */
@@ -213,6 +252,9 @@ void llvm_cleanup(void)
     LLVMDisposeExecutionEngine(engine); 
 }
 
+/*
+   Jit an int literal
+*/
 int exec_int(ast_t * ast)
 {
     long num = atol(ast->sym->name);
@@ -222,6 +264,9 @@ int exec_int(ast_t * ast)
     return 0;
 }
 
+/*
+   Jit a double literal
+*/
 int exec_double(ast_t * ast)
 {
     double num = atof(ast->sym->name);
@@ -231,6 +276,10 @@ int exec_double(ast_t * ast)
     return 0;
 }
 
+/*
+   Jit a string literali, being careful to replace special 
+   characters with their ascii equivalent
+*/
 int exec_string(ast_t * ast)
 {
     char * name = ast->sym->name;
@@ -291,6 +340,10 @@ int exec_string(ast_t * ast)
     return 0;
 }
 
+/*
+   We have a number of binary ops we want to jit and they
+   all look the same, so define a macro for them.
+*/
 #define exec_binary(__name, __fop, __iop, __str)   \
 __name(ast_t * ast)                                \
 {                                                  \
@@ -310,10 +363,15 @@ __name(ast_t * ast)                                \
     return 0;                                      \
 }
 
+/* Jit add, sub, .... ops */
 int exec_binary(exec_plus, LLVMBuildFAdd, LLVMBuildAdd, "add")
 
 int exec_binary(exec_minus, LLVMBuildFSub, LLVMBuildSub, "sub")
 
+/*
+   As we traverse the ast we dispatch on ast tag to various jit 
+   functions defined above
+*/
 int exec_ast(ast_t * ast)
 {
     switch (ast->tag)
@@ -331,8 +389,10 @@ int exec_ast(ast_t * ast)
     }
 }
 
+/* We start traversing the ast to do jit'ing here */
 void exec_root(ast_t * ast)
 {
+    /* Traverse the ast jit'ing everything, then run the jit'd code */
     START_EXEC;
          
     exec_ast(ast);
@@ -341,6 +401,10 @@ void exec_root(ast_t * ast)
     
     END_EXEC;
          
+    /* 
+       If our jit side print_obj had to create a format string
+       clean it up now that we've executed the jit'd code.
+    */
     if (fmtstr)
     {
         LLVMDeleteGlobal(fmtstr);
