@@ -7,7 +7,7 @@ sym_t ** sym_tab;
 
 void sym_tab_init(void)
 {
-    sym_tab = GC_MALLOC(SYM_TAB_SIZE*sizeof(sym_t));
+    sym_tab = GC_MALLOC(SYM_TAB_SIZE*sizeof(sym_t *));
 }
 
 sym_t * new_symbol(char * name, int length)
