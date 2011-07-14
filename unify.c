@@ -128,9 +128,19 @@ void annotate_ast(ast_t * a)
     {
     case AST_IDENT:
         b = find_symbol(a->sym);
-        if (b != NULL)
+        if (b != NULL && b->type != t_nil)
         {
             a->type = b->type;
+            a->val = b->val;
+        } else
+           exception("Unbound symbol\n");
+        break;
+    case AST_LVALUE:
+        a->tag = AST_IDENT;
+        b = find_symbol(a->sym);
+        if (b != NULL)
+        {
+            b->type = a->type;
             a->val = b->val;
         } else
            exception("Unbound symbol\n");
@@ -156,6 +166,11 @@ void annotate_ast(ast_t * a)
     case AST_MINUS:
     case AST_ASSIGNMENT:
         annotate_ast(a->child->next);
+        if (a->tag == AST_ASSIGNMENT)
+        {
+            a->child->tag = AST_LVALUE;
+            a->child->type = new_typevar();
+        }
         annotate_ast(a->child);
         a->type = a->child->type;
         push_type_rel(a->type, a->child->next->type);
@@ -167,14 +182,17 @@ void annotate_ast(ast_t * a)
         {
             bind_t * bind;
             sym_t * sym;
-            t->type = new_typevar();
             if (t->tag == AST_ASSIGNMENT)
             {
                 annotate_ast(t->child->next);
+                t->type = new_typevar();
                 t->child->type = t->type;
                 sym = t->child->sym;
             } else
+            {
                 sym = t->sym;
+                t->type = t_nil;
+            }
             
             bind = find_symbol_in_scope(sym);
             if (bind != NULL)
@@ -194,17 +212,15 @@ void annotate_ast(ast_t * a)
                         exception("Immediate redefinition of symbol\n");
                     s = s->next;
                 }
-
-                bind->type = t->type;
-            } else
-                bind_symbol(sym, t->type, NULL);
+            }
+                
+            bind_symbol(sym, t->type, NULL);
             
             if (t->tag == AST_ASSIGNMENT)
                 push_type_rel(t->type, t->child->next->type);
             
             t = t->next;
         }
-        scope_mark();
         a->type = t_nil;
         break;
     }
@@ -218,16 +234,6 @@ void print_assigns(type_rel_t * ass)
         printf(" = ");
         print_type(ass->t2);
         printf(";\n");
-        ass = ass->next;
-    }
-}
-
-void check_free(type_rel_t * ass)
-{
-    while (ass != NULL)
-    {
-        if (ass->t2->typ == TYPEVAR)
-           exception("Unable to resolve types : possibly uninitialised data\n");
         ass = ass->next;
     }
 }

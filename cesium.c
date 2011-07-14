@@ -53,14 +53,13 @@ int main(void) {
           } else if (root != NULL)
           {
              rel_stack_init();
+             scope_mark();
              annotate_ast(root);
              if (TRACE) 
                 ast_print(root, 0);
              unify(rel_stack, rel_assign);
              if (TRACE)
                 print_assigns(rel_assign);
-             if (root->tag != AST_FNDEC)
-                check_free(rel_assign);
              exec_root(jit, root);
            }
         } else if (jval == 1)

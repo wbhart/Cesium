@@ -31,8 +31,6 @@ void annotate_ast(ast_t * a);
 
 void print_assigns(type_rel_t * ass);
 
-void check_free(type_rel_t * ass);
-
 #ifdef __cplusplus
 }
 #endif

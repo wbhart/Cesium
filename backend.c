@@ -382,8 +382,7 @@ int exec_binary(exec_minus, LLVMBuildFSub, LLVMBuildSub, "sub")
 int exec_load(jit_t * jit, ast_t * ast)
 {
     bind_t * bind = find_symbol(ast->sym);
-    if (bind->val == NULL)
-        jit_exception(jit, "Use of uninitialised value\n");
+    
     if (ast->val == NULL)
     {
         ast->type = bind->type;
@@ -391,7 +390,7 @@ int exec_load(jit_t * jit, ast_t * ast)
     } else
     {
         subst_type(&ast->type);
-        ast->val = LLVMBuildLoad(jit->builder, ast->val, bind->sym->name);
+        ast->val = LLVMBuildLoad(jit->builder, ast->val, ast->sym->name);
     }
     
     return 0;
@@ -405,7 +404,7 @@ int exec_ident(jit_t * jit, ast_t * ast)
     if (ast->val == NULL)
     {
         bind_t * bind = find_symbol(ast->sym);
-
+        
         if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
         {
             subst_type(&bind->type); /* fill in the type */
@@ -414,19 +413,13 @@ int exec_ident(jit_t * jit, ast_t * ast)
             {
                 LLVMTypeRef type = typ_to_llvm(bind->type->typ);
                 
-                if (bind->val != NULL) /* check if the variable is already defined */
-                {                
-                    if (LLVMGetFirstUse(bind->val) == NULL) /* clean it up if not in use */
-                        LLVMDeleteGlobal(bind->val);
-                }
-
                 if (scope_is_global()) /* variable is global */
                     bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);             
                 else
                     bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
 
                 LLVMSetInitializer(bind->val, LLVMGetUndef(type));
-            } 
+            }   
         }
         
         ast->type = bind->type;
