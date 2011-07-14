@@ -69,7 +69,8 @@ Infix20       = ( r:Infix10 ( ( o:Plus | o:Minus )
                   s:Infix10 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
 Infix10       = ( r:UnaryExp ( ( o:Times | o:Div | o:Mod ) 
                   s: UnaryExp { r = ast_binary(r, s, o); } )* ) { $$ = r; }
-UnaryExp      = ( Incr Identifier ) | ( Decr Identifier ) 
+UnaryExp      = ( Incr s:Identifier { $$ = ast_unary(s, AST_PRE_INC); } ) 
+                 | ( Decr s:Identifier { $$ = ast_unary(s, AST_PRE_DEC); } ) 
                  | ( Plus UnaryExp ) 
                  | ( Minus s:UnaryExp { $$ = ast_unary(s, AST_UNMINUS); } ) 
                  | ( LogNot s:UnaryExp { $$ = ast_unary(s, AST_LOGNOT); } ) 

@@ -400,12 +400,67 @@ __name(jit_t * jit, ast_t * ast)                        \
     return 0;                                           \
 }
 
+#define exec_unary_pre(__name, __fop, __iop, __c1, __c2, __str) \
+__name(jit_t * jit, ast_t * ast)                                \
+{                                                               \
+    ast_t * expr1 = ast->child;                                 \
+                                                                \
+    exec_ident(jit, expr1);                                     \
+                                                                \
+    LLVMValueRef v1 = LLVMBuildLoad(jit->builder,                \
+                      expr1->val, expr1->sym->name);             \
+                                                                \
+    if (expr1->type == t_double)                                \
+       ast->val = __fop(jit->builder, v1,                       \
+          LLVMConstReal(LLVMDoubleType(), __c1), __str);        \
+    else                                                        \
+       ast->val = __iop(jit->builder, v1,                       \
+          LLVMConstInt(LLVMWordType(), __c2, 0), __str);        \
+    LLVMBuildStore(jit->builder, ast->val, expr1->val);         \
+                                                                \
+    ast->type = expr1->type;                                    \
+                                                                \
+    return 0;                                                   \
+}
+
+#define exec_unary_post(__name, __fop, __iop, __c1, __c2, __str) \
+__name(jit_t * jit, ast_t * ast)                                 \
+{                                                                \
+    ast_t * expr1 = ast->child;                                  \
+                                                                 \
+    exec_ident(jit, expr1);                                      \
+                                                                 \
+    LLVMValueRef v1 = LLVMBuildLoad(jit->builder,                \
+                      expr1->val, expr1->sym->name);             \
+                                                                 \
+    if (expr1->type == t_double)                                 \
+       ast->val = __fop(jit->builder, v1,                        \
+          LLVMConstReal(LLVMDoubleType(), __c1), __str);         \
+    else                                                         \
+       ast->val = __iop(jit->builder, v1,                        \
+          LLVMConstInt(LLVMWordType(), __c2, 0), __str);         \
+    LLVMBuildStore(jit->builder, ast->val, expr1->val);          \
+                                                                 \
+    ast->type = expr1->type;                                     \
+    ast->val = v1;                                               \
+                                                                 \
+    return 0;                                                    \
+}
+
 /* Jit !, ~, -, ... unary ops */
 int exec_unary(exec_unminus, LLVMBuildFNeg, LLVMBuildNeg, "unary-minus")
 
 int exec_unary1(exec_lognot, LLVMBuildNot, "log-not")
 
 int exec_unary1(exec_bitnot, LLVMBuildNot, "bit-not")
+
+int exec_unary_pre(exec_preinc, LLVMBuildFAdd, LLVMBuildAdd, 1.0, 1, "pre-inc")
+
+int exec_unary_pre(exec_predec, LLVMBuildFSub, LLVMBuildSub, 1.0, 1, "pre-dec")
+
+int exec_unary_post(exec_postinc, LLVMBuildFAdd, LLVMBuildAdd, 1.0, 1, "post-inc")
+
+int exec_unary_post(exec_postdec, LLVMBuildFSub, LLVMBuildSub, 1.0, 1, "post-dec")
 
 /*
    We have a number of binary ops we want to jit and they
@@ -661,6 +716,14 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_bitnot(jit, ast);
     case AST_UNMINUS:
         return exec_unminus(jit, ast);
+    case AST_PRE_INC:
+        return exec_preinc(jit, ast);
+    case AST_PRE_DEC:
+        return exec_predec(jit, ast);
+    case AST_POST_INC:
+        return exec_postinc(jit, ast);
+    case AST_POST_DEC:
+        return exec_postdec(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

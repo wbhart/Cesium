@@ -41,6 +41,10 @@ void llvm_reset(jit_t * jit);
 
 void llvm_cleanup(jit_t * jit);
 
+int exec_load(jit_t * jit, ast_t * ast);
+
+int exec_ident(jit_t * jit, ast_t * ast);
+
 int exec_ast(jit_t * jit, ast_t * ast);
 
 void exec_root(jit_t * jit, ast_t * ast);

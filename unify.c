@@ -159,6 +159,8 @@ void annotate_ast(ast_t * a)
         break;
     case AST_POST_INC:
     case AST_POST_DEC:
+    case AST_PRE_INC:
+    case AST_PRE_DEC:
     case AST_LOGNOT:
     case AST_BITNOT:
     case AST_UNMINUS:

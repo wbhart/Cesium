@@ -178,6 +178,12 @@ void ast_print_op(ast_t * a)
     case AST_POST_DEC:
         printf("post-dec");
         break;
+    case AST_PRE_INC:
+        printf("pre-inc");
+        break;
+    case AST_PRE_DEC:
+        printf("pre-dec");
+        break;
     }
 }
 
@@ -229,6 +235,8 @@ void ast_print(ast_t * a, int indent)
         break;
     case AST_POST_INC:
     case AST_POST_DEC:
+    case AST_PRE_INC:
+    case AST_PRE_DEC:
     case AST_LOGNOT:
         ast_print_op(a);
         ast_print_type(a);
