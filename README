@@ -27,9 +27,9 @@ You can also do computations with:
 
 1) doubles and integers 
 2) +, -, *, /, %, <<, >> and parentheses.
-3) &, |, ^|
+3) &, |, ^|, ~
 4) <, >, <=, >=, ==, !=
-5) &&, ||
+5) &&, ||, !
 
 123 + 23 - (1 + 27);
 12.3 + 12.1 - (1.2 + 0.1);

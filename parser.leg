@@ -70,8 +70,11 @@ Infix20       = ( r:Infix10 ( ( o:Plus | o:Minus )
 Infix10       = ( r:UnaryExp ( ( o:Times | o:Div | o:Mod ) 
                   s: UnaryExp { r = ast_binary(r, s, o); } )* ) { $$ = r; }
 UnaryExp      = ( Incr Identifier ) | ( Decr Identifier ) 
-                 | ( Plus UnaryExp ) | ( Minus UnaryExp )
-                 | ( LogNot UnaryExp ) | ( BitNot UnaryExp ) | PostfixExp 
+                 | ( Plus UnaryExp ) 
+                 | ( Minus s:UnaryExp { $$ = ast_unary(s, AST_UNMINUS); } ) 
+                 | ( LogNot s:UnaryExp { $$ = ast_unary(s, AST_LOGNOT); } ) 
+                 | ( BitNot s:UnaryExp { $$ = ast_unary(s, AST_BITNOT); } ) 
+                 | PostfixExp 
 PostfixExp    = ( r:Identifier Incr ) { $$ = ast_unary(r, AST_POST_INC); }
                  | ( r:Identifier Decr ) { $$ = ast_unary(r, AST_POST_DEC); }
                  | Primary 
@@ -116,9 +119,9 @@ Incr          = '++' Spacing
 Decr          = '--' Spacing
 Plus          = '+' Spacing { $$ = op_plus; }
 Minus         = '-' Spacing { $$ = op_minus; }
-LogNot        = '!' Spacing
-LogAnd        = '&&' Spacing  { $$ = op_logand; }
-LogOr         = '||' Spacing  { $$ = op_logor; }
+LogNot        = '!' Spacing 
+LogAnd        = '&&' Spacing { $$ = op_logand; }
+LogOr         = '||' Spacing { $$ = op_logor; }
 BitNot        = '~' Spacing
 BitAnd        = '&' Spacing { $$ = op_bitand; }
 BitXor        = '^|' Spacing { $$ = op_bitxor; }

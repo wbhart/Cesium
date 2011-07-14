@@ -362,6 +362,52 @@ int exec_string(jit_t * jit, ast_t * ast)
 }
 
 /*
+   We have a number of unary ops we want to jit and they
+   all look the same, so define macros for them.
+*/
+#define exec_unary(__name, __fop, __iop, __str)         \
+__name(jit_t * jit, ast_t * ast)                        \
+{                                                       \
+    ast_t * expr1 = ast->child;                         \
+                                                        \
+    exec_ast(jit, expr1);                               \
+                                                        \
+    LLVMValueRef v1 = expr1->val;                       \
+                                                        \
+    if (expr1->type == t_double)                        \
+       ast->val = __fop(jit->builder, v1, __str);       \
+    else                                                \
+       ast->val = __iop(jit->builder, v1, __str);       \
+                                                        \
+    ast->type = expr1->type;                            \
+                                                        \
+    return 0;                                           \
+}
+
+#define exec_unary1(__name, __iop, __str)               \
+__name(jit_t * jit, ast_t * ast)                        \
+{                                                       \
+    ast_t * expr1 = ast->child;                         \
+                                                        \
+    exec_ast(jit, expr1);                               \
+                                                        \
+    LLVMValueRef v1 = expr1->val;                       \
+                                                        \
+    ast->val = __iop(jit->builder, v1, __str);          \
+                                                        \
+    ast->type = expr1->type;                            \
+                                                        \
+    return 0;                                           \
+}
+
+/* Jit !, ~, -, ... unary ops */
+int exec_unary(exec_unminus, LLVMBuildFNeg, LLVMBuildNeg, "unary-minus")
+
+int exec_unary1(exec_lognot, LLVMBuildNot, "log-not")
+
+int exec_unary1(exec_bitnot, LLVMBuildNot, "bit-not")
+
+/*
    We have a number of binary ops we want to jit and they
    all look the same, so define macros for them.
 */
@@ -609,6 +655,12 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_logand(jit, ast);
     case AST_LOGOR:
         return exec_logor(jit, ast);
+    case AST_LOGNOT:
+        return exec_lognot(jit, ast);
+    case AST_BITNOT:
+        return exec_bitnot(jit, ast);
+    case AST_UNMINUS:
+        return exec_unminus(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

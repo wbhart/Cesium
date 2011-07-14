@@ -163,6 +163,21 @@ void ast_print_op(ast_t * a)
     case AST_LOGOR:
         printf("logor");
         break;
+    case AST_LOGNOT:
+        printf("lognot");
+        break;
+    case AST_BITNOT:
+        printf("bitnot");
+        break;
+    case AST_UNMINUS:
+        printf("unary-minus");
+        break;
+    case AST_POST_INC:
+        printf("post-inc");
+        break;
+    case AST_POST_DEC:
+        printf("post-dec");
+        break;
     }
 }
 
@@ -213,13 +228,9 @@ void ast_print(ast_t * a, int indent)
         printf("\n");
         break;
     case AST_POST_INC:
-        printf("postinc");
-        ast_print_type(a);
-        printf("\n");
-        ast_print(a->child, indent + 3);
-        break;
     case AST_POST_DEC:
-        printf("postdec");
+    case AST_LOGNOT:
+        ast_print_op(a);
         ast_print_type(a);
         printf("\n");
         ast_print(a->child, indent + 3);
