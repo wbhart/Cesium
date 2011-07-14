@@ -58,6 +58,8 @@ extern ast_t * op_eq;
 extern ast_t * op_ne;
 extern ast_t * op_logand;
 extern ast_t * op_logor;
+extern ast_t * const_true;
+extern ast_t * const_false;
 
 void ast_init(void);
 

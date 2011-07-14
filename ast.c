@@ -207,6 +207,11 @@ void ast_print(ast_t * a, int indent)
         ast_print_type(a);
         printf("\n");
         break;
+    case AST_BOOL:
+        printf("bool(%s)", a->sym->name);
+        ast_print_type(a);
+        printf("\n");
+        break;
     case AST_POST_INC:
         printf("postinc");
         ast_print_type(a);

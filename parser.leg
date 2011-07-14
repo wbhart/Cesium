@@ -75,7 +75,7 @@ UnaryExp      = ( Incr Identifier ) | ( Decr Identifier )
 PostfixExp    = ( r:Identifier Incr ) { $$ = ast_unary(r, AST_POST_INC); }
                  | ( r:Identifier Decr ) { $$ = ast_unary(r, AST_POST_DEC); }
                  | Primary 
-Primary       = ( Identifier | Double | IntConst | String 
+Primary       = ( Boolean | Identifier | Double | IntConst | String 
                  | ( LParen Expression RParen ) )
 
 Var           = 'var' Spacing
@@ -104,6 +104,7 @@ Double        = < Integer '.' [0-9]+ ( ( 'e' | 'E' ) '-'? Integer )? ( 'f' | 'd'
                  sym_t * sym = sym_lookup(yytext);
                  $$ = ast_symbol(sym, AST_DOUBLE);
               }
+Boolean       = True | False
 Spacing       = ( Space | Comment )*
 Space         = ' ' | '\t' | EOL
 Comment       = Comment1 | Comment2
@@ -144,6 +145,16 @@ OrEQ          = '|=' Spacing
 XorEQ         = '^|=' Spacing
 ShrEQ         = '>>=' Spacing
 ShlEQ         = '<<=' Spacing
+True          = < 'true' > Spacing 
+              {
+                 sym_t * sym = sym_lookup(yytext);
+                 $$ = ast_symbol(sym, AST_BOOL);
+              }
+False         = < 'false' > Spacing
+              {
+                 sym_t * sym = sym_lookup(yytext);
+                 $$ = ast_symbol(sym, AST_BOOL);
+              }
 Quotes        = '"'
 SlashQuotes   = '\\\"'
 EOL           = '\r\n' | '\n' | '\r'

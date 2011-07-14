@@ -285,6 +285,19 @@ int exec_double(jit_t * jit, ast_t * ast)
 }
 
 /*
+   Jit a bool
+*/
+int exec_bool(jit_t * jit, ast_t * ast)
+{
+    if (strcmp(ast->sym->name, "true") == 0)
+        ast->val = LLVMConstInt(LLVMInt1Type(), 1, 0);
+    else
+        ast->val = LLVMConstInt(LLVMInt1Type(), 0, 0);
+
+    return 0;
+}
+
+/*
    Jit a string literali, being careful to replace special 
    characters with their ascii equivalent
 */
@@ -552,6 +565,8 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_double(jit, ast);
     case AST_STRING:
         return exec_string(jit, ast);
+    case AST_BOOL:
+        return exec_bool(jit, ast);
     case AST_PLUS:
         return exec_plus(jit, ast);
     case AST_MINUS:
