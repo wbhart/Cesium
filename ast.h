@@ -21,6 +21,7 @@ typedef enum {
    AST_PLUS, AST_MINUS, AST_TIMES, AST_DIV, AST_MOD,
    AST_LSH, AST_RSH, 
    AST_BITOR, AST_BITAND, AST_BITXOR,
+   AST_LE, AST_GE, AST_LT, AST_GT, AST_EQ, AST_NE,
    AST_POST_INC, AST_POST_DEC,
    AST_ASSIGNMENT, AST_VARASSIGN, 
    AST_FNDEC
@@ -48,6 +49,12 @@ extern ast_t * op_rsh;
 extern ast_t * op_bitor;
 extern ast_t * op_bitand;
 extern ast_t * op_bitxor;
+extern ast_t * op_le;
+extern ast_t * op_ge;
+extern ast_t * op_lt;
+extern ast_t * op_gt;
+extern ast_t * op_eq;
+extern ast_t * op_ne;
 
 void ast_init(void);
 

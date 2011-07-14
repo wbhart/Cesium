@@ -16,6 +16,12 @@ ast_t * op_rsh;
 ast_t * op_bitor;
 ast_t * op_bitand;
 ast_t * op_bitxor;
+ast_t * op_le;
+ast_t * op_ge;
+ast_t * op_lt;
+ast_t * op_gt;
+ast_t * op_eq;
+ast_t * op_ne;
 
 void ast_init(void)
 {
@@ -29,6 +35,12 @@ void ast_init(void)
     op_bitor = ast_op(AST_BITOR);
     op_bitand = ast_op(AST_BITAND);
     op_bitxor = ast_op(AST_BITXOR);
+    op_le = ast_op(AST_LE);
+    op_ge = ast_op(AST_GE);
+    op_lt = ast_op(AST_LT);
+    op_gt = ast_op(AST_GT);
+    op_eq = ast_op(AST_EQ);
+    op_ne = ast_op(AST_NE);
 }
 
 ast_t * new_ast(void)
@@ -123,6 +135,24 @@ void ast_print_op(ast_t * a)
     case AST_BITXOR:
         printf("bitxor");
         break;
+    case AST_LE:
+        printf("le");
+        break;
+    case AST_GE:
+        printf("ge");
+        break;
+    case AST_LT:
+        printf("lt");
+        break;
+    case AST_GT:
+        printf("gt");
+        break;
+    case AST_EQ:
+        printf("eq");
+        break;
+    case AST_NE:
+        printf("ne");
+        break;
     }
 }
 
@@ -189,6 +219,12 @@ void ast_print(ast_t * a, int indent)
     case AST_BITOR:
     case AST_BITAND:
     case AST_BITXOR:
+    case AST_LE:
+    case AST_GE:
+    case AST_LT:
+    case AST_GT:
+    case AST_EQ:
+    case AST_NE:
         ast_print_op(a);
         ast_print_type(a);
         printf("\n");

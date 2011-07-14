@@ -8,7 +8,7 @@
 #define YY_INPUT(buf, result, max_size, core)         \
 {                                                     \
   int yyc = fgetc(stdin);                             \
-  if (yyc == EOF) longjmp(exc, 2);                     \
+  if (yyc == EOF) longjmp(exc, 2);                    \
   result = (EOF == yyc) ? 0 : (*(buf)= yyc, 1);       \
 }
 %}
@@ -57,8 +57,10 @@ Infix70       = ( r:Infix60 ( o:BitXor
                   s:Infix60 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
 Infix60       = ( r:Infix50 ( o:BitAnd 
                   s:Infix50 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
-Infix50       = ( Infix40 ( ( EQ | NE ) Infix40 )* )
-Infix40       = ( Infix30 ( ( LE | GE | LT | GT ) Infix30 )* )
+Infix50       = ( r:Infix40 ( ( o:EQ | o:NE ) 
+                  s:Infix40 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
+Infix40       = ( r:Infix30 ( ( o:LE | o:GE | o:LT | o:GT ) 
+                  s:Infix30 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
 Infix30       = ( r:Infix20 ( ( o:Lsh | o:Rsh) 
                   s:Infix20 { r = ast_binary(r, s, o); }  )* ) { $$ = r; }
 Infix20       = ( r:Infix10 ( ( o:Plus | o:Minus ) 
@@ -123,12 +125,12 @@ Div           = '/' Spacing { $$ = op_div; }
 Mod           = '%' Spacing { $$ = op_mod; }
 Lsh           = '<<' Spacing { $$ = op_lsh; }
 Rsh           = '>>' Spacing  { $$ = op_rsh; }
-LT            = '<' Spacing
-GT            = '>' Spacing
-LE            = '<=' Spacing
-GE            = '>=' Spacing
-EQ            = '==' Spacing
-NE            = '!=' Spacing
+LT            = '<' Spacing { $$ = op_lt; } 
+GT            = '>' Spacing { $$ = op_gt; }
+LE            = '<=' Spacing { $$ = op_le; }
+GE            = '>=' Spacing { $$ = op_ge; }
+EQ            = '==' Spacing { $$ = op_eq; }
+NE            = '!=' Spacing { $$ = op_ne; }
 Equals        = '=' Spacing
 PlusEQ        = '+=' Spacing
 MinusEQ       = '-=' Spacing

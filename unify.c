@@ -183,6 +183,17 @@ void annotate_ast(ast_t * a)
         a->type = a->child->type;
         push_type_rel(a->type, a->child->next->type);
         break;
+    case AST_LT:
+    case AST_GT:
+    case AST_LE:
+    case AST_GE:
+    case AST_EQ:
+    case AST_NE:
+        annotate_ast(a->child->next);
+        annotate_ast(a->child);
+        a->type = t_bool;
+        push_type_rel(a->child->type, a->child->next->type);
+        break;
     case AST_VARASSIGN:
         t = a->child;
         scope_mark();

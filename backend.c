@@ -373,6 +373,25 @@ __name(jit_t * jit, ast_t * ast)                        \
     return 0;                                           \
 }
 
+#define exec_binary_rel(__name, __fop, __frel, __iop, __irel, __str)  \
+__name(jit_t * jit, ast_t * ast)                                      \
+{                                                                     \
+    ast_t * expr1 = ast->child;                                       \
+    ast_t * expr2 = expr1->next;                                      \
+                                                                      \
+    exec_ast(jit, expr1);                                             \
+    exec_ast(jit, expr2);                                             \
+                                                                      \
+    LLVMValueRef v1 = expr1->val, v2 = expr2->val;                    \
+                                                                      \
+    if (expr1->type == t_double)                                      \
+       ast->val = __fop(jit->builder, __frel, v1, v2, __str);         \
+    else                                                              \
+       ast->val = __iop(jit->builder, __irel, v1, v2, __str);         \
+                                                                      \
+    return 0;                                                         \
+}
+
 #define exec_binary_int(__name, __iop, __str)           \
 __name(jit_t * jit, ast_t * ast)                        \
 {                                                       \
@@ -411,6 +430,18 @@ int exec_binary_int(exec_bitor, LLVMBuildOr, "bitor")
 int exec_binary_int(exec_bitand, LLVMBuildAnd, "bitand")
 
 int exec_binary_int(exec_bitxor, LLVMBuildXor, "bitxor")
+
+int exec_binary_rel(exec_le, LLVMBuildFCmp, LLVMRealOLE, LLVMBuildICmp, LLVMIntSLE, "le")
+
+int exec_binary_rel(exec_ge, LLVMBuildFCmp, LLVMRealOGE, LLVMBuildICmp, LLVMIntSGE, "ge")
+
+int exec_binary_rel(exec_lt, LLVMBuildFCmp, LLVMRealOLT, LLVMBuildICmp, LLVMIntSLT, "lt")
+
+int exec_binary_rel(exec_gt, LLVMBuildFCmp, LLVMRealOGT, LLVMBuildICmp, LLVMIntSGT, "gt")
+
+int exec_binary_rel(exec_eq, LLVMBuildFCmp, LLVMRealOEQ, LLVMBuildICmp, LLVMIntEQ, "eq")
+
+int exec_binary_rel(exec_ne, LLVMBuildFCmp, LLVMRealONE, LLVMBuildICmp, LLVMIntNE, "ne")
 
 /*
    Load an identifier
@@ -543,6 +574,18 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_assignment(jit, ast);
     case AST_IDENT:
         return exec_load(jit, ast);
+    case AST_LE:
+        return exec_le(jit, ast);
+    case AST_GE:
+        return exec_ge(jit, ast);
+    case AST_LT:
+        return exec_lt(jit, ast);
+    case AST_GT:
+        return exec_gt(jit, ast);
+    case AST_EQ:
+        return exec_eq(jit, ast);
+    case AST_NE:
+        return exec_ne(jit, ast);
     default:
         ast->type = t_nil;
         return 0;
