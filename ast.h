@@ -16,10 +16,12 @@
 #include "types.h"
 
 typedef enum {
-   AST_IDENT, AST_DOUBLE, AST_INT, AST_BOOL, AST_STRING, 
+   AST_IDENT, AST_LVALUE, 
+   AST_DOUBLE, AST_INT, AST_BOOL, AST_STRING,
+   AST_PLUS, AST_MINUS, AST_TIMES, AST_DIV, AST_MOD,
    AST_POST_INC, AST_POST_DEC,
-   AST_PLUS, AST_MINUS, AST_ASSIGNMENT, AST_VARASSIGN, 
-   AST_FNDEC, AST_LVALUE
+   AST_ASSIGNMENT, AST_VARASSIGN, 
+   AST_FNDEC
 } tag_t;
 
 typedef struct ast_t {
@@ -36,6 +38,9 @@ extern ast_t * root;
 
 extern ast_t * op_plus;
 extern ast_t * op_minus;
+extern ast_t * op_times;
+extern ast_t * op_div;
+extern ast_t * op_mod;
 
 void ast_init(void);
 

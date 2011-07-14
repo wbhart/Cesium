@@ -164,6 +164,9 @@ void annotate_ast(ast_t * a)
         break;
     case AST_PLUS:
     case AST_MINUS:
+    case AST_TIMES:
+    case AST_DIV:
+    case AST_MOD:
     case AST_ASSIGNMENT:
         annotate_ast(a->child->next);
         if (a->tag == AST_ASSIGNMENT)

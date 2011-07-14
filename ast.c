@@ -8,11 +8,17 @@ ast_t * root;
 
 ast_t * op_plus;
 ast_t * op_minus;
+ast_t * op_times;
+ast_t * op_div;
+ast_t * op_mod;
 
 void ast_init(void)
 {
     op_plus = ast_op(AST_PLUS);
     op_minus = ast_op(AST_MINUS);
+    op_times = ast_op(AST_TIMES);
+    op_div = ast_op(AST_DIV);
+    op_mod = ast_op(AST_MOD);
 }
 
 ast_t * new_ast(void)
@@ -83,6 +89,15 @@ void ast_print_op(ast_t * a)
     case AST_MINUS:
         printf("minus");
         break;
+    case AST_TIMES:
+        printf("times");
+        break;
+    case AST_DIV:
+        printf("div");
+        break;
+    case AST_MOD:
+        printf("mod");
+        break;
     }
 }
 
@@ -141,6 +156,9 @@ void ast_print(ast_t * a, int indent)
         break;
     case AST_PLUS:
     case AST_MINUS:
+    case AST_TIMES:
+    case AST_DIV:
+    case AST_MOD:
         ast_print_op(a);
         ast_print_type(a);
         printf("\n");

@@ -59,7 +59,8 @@ Infix40       = ( Infix30 ( ( LE | GE | LT | GT ) Infix30 )* )
 Infix30       = ( Infix20 ( ( Lsh | Rsh) Infix20 )* )
 Infix20       = ( r:Infix10 ( ( o:Plus | o:Minus ) 
                   s:Infix10 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
-Infix10       = ( UnaryExp ( ( Times | Div | Mod ) UnaryExp )* )
+Infix10       = ( r:UnaryExp ( ( o:Times | o:Div | o:Mod ) 
+                  s: UnaryExp { r = ast_binary(r, s, o); } )* ) { $$ = r; }
 UnaryExp      = ( Incr Identifier ) | ( Decr Identifier ) 
                  | ( Plus UnaryExp ) | ( Minus UnaryExp )
                  | ( LogNot UnaryExp ) | ( BitNot UnaryExp ) | PostfixExp 
@@ -113,9 +114,9 @@ BitNot        = '~' Spacing
 BitAnd        = '&' Spacing
 BitXor        = '^|' Spacing
 BitOr         = '|' Spacing
-Times         = '*' Spacing
-Div           = '/' Spacing
-Mod           = '%' Spacing
+Times         = '*' Spacing { $$ = op_times; }
+Div           = '/' Spacing { $$ = op_div; }
+Mod           = '%' Spacing { $$ = op_mod; }
 Lsh           = '<<' Spacing
 Rsh           = '>>' Spacing
 LT            = '<' Spacing

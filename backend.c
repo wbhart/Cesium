@@ -376,6 +376,12 @@ int exec_binary(exec_plus, LLVMBuildFAdd, LLVMBuildAdd, "add")
 
 int exec_binary(exec_minus, LLVMBuildFSub, LLVMBuildSub, "sub")
 
+int exec_binary(exec_times, LLVMBuildFMul, LLVMBuildMul, "times")
+
+int exec_binary(exec_div, LLVMBuildFDiv, LLVMBuildSDiv, "div")
+
+int exec_binary(exec_mod, LLVMBuildFRem, LLVMBuildSRem, "mod")
+
 /*
    Load an identifier
 */
@@ -489,6 +495,12 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_plus(jit, ast);
     case AST_MINUS:
         return exec_minus(jit, ast);
+    case AST_TIMES:
+        return exec_times(jit, ast);
+    case AST_DIV:
+        return exec_div(jit, ast);
+    case AST_MOD:
+        return exec_mod(jit, ast);
     case AST_VARASSIGN:
         return exec_varassign(jit, ast);
     case AST_ASSIGNMENT:
