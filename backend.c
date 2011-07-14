@@ -350,7 +350,7 @@ int exec_string(jit_t * jit, ast_t * ast)
 
 /*
    We have a number of binary ops we want to jit and they
-   all look the same, so define a macro for them.
+   all look the same, so define macros for them.
 */
 #define exec_binary(__name, __fop, __iop, __str)        \
 __name(jit_t * jit, ast_t * ast)                        \
@@ -363,10 +363,30 @@ __name(jit_t * jit, ast_t * ast)                        \
                                                         \
     LLVMValueRef v1 = expr1->val, v2 = expr2->val;      \
                                                         \
-    if (ast->type == t_double)                          \
+    if (expr1->type == t_double)                        \
        ast->val = __fop(jit->builder, v1, v2, __str);   \
     else                                                \
        ast->val = __iop(jit->builder, v1, v2, __str);   \
+                                                        \
+    ast->type = expr1->type;                            \
+                                                        \
+    return 0;                                           \
+}
+
+#define exec_binary_int(__name, __iop, __str)           \
+__name(jit_t * jit, ast_t * ast)                        \
+{                                                       \
+    ast_t * expr1 = ast->child;                         \
+    ast_t * expr2 = expr1->next;                        \
+                                                        \
+    exec_ast(jit, expr1);                               \
+    exec_ast(jit, expr2);                               \
+                                                        \
+    LLVMValueRef v1 = expr1->val, v2 = expr2->val;      \
+                                                        \
+    ast->val = __iop(jit->builder, v1, v2, __str);      \
+                                                        \
+    ast->type = expr1->type;                            \
                                                         \
     return 0;                                           \
 }
@@ -381,6 +401,10 @@ int exec_binary(exec_times, LLVMBuildFMul, LLVMBuildMul, "times")
 int exec_binary(exec_div, LLVMBuildFDiv, LLVMBuildSDiv, "div")
 
 int exec_binary(exec_mod, LLVMBuildFRem, LLVMBuildSRem, "mod")
+
+int exec_binary_int(exec_lsh, LLVMBuildShl, "lsh")
+
+int exec_binary_int(exec_rsh, LLVMBuildAShr, "rsh")
 
 /*
    Load an identifier
@@ -407,32 +431,28 @@ int exec_load(jit_t * jit, ast_t * ast)
 */
 int exec_ident(jit_t * jit, ast_t * ast)
 {
-    if (ast->val == NULL)
+    bind_t * bind = find_symbol(ast->sym);
+        
+    if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
     {
-        bind_t * bind = find_symbol(ast->sym);
-        
-        if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
+        subst_type(&bind->type); /* fill in the type */
+
+        if (bind->type->typ != TYPEVAR) /* if we now know what it is */
         {
-            subst_type(&bind->type); /* fill in the type */
-
-            if (bind->type->typ != TYPEVAR) /* if we now know what it is */
-            {
-                LLVMTypeRef type = typ_to_llvm(bind->type->typ);
+            LLVMTypeRef type = typ_to_llvm(bind->type->typ);
                 
-                if (scope_is_global()) /* variable is global */
-                    bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);             
-                else
-                    bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
+            if (scope_is_global()) /* variable is global */
+                bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);             
+            else
+                bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
 
-                LLVMSetInitializer(bind->val, LLVMGetUndef(type));
-            }   
-        }
+            LLVMSetInitializer(bind->val, LLVMGetUndef(type));
+        }   
+    }
         
-        ast->type = bind->type;
-        ast->val = bind->val;
-    } else
-        subst_type(&ast->type);
-
+    ast->type = bind->type;
+    ast->val = bind->val;
+   
     return 0;
 }
 
@@ -501,6 +521,10 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_div(jit, ast);
     case AST_MOD:
         return exec_mod(jit, ast);
+    case AST_LSH:
+        return exec_lsh(jit, ast);
+    case AST_RSH:
+        return exec_rsh(jit, ast);
     case AST_VARASSIGN:
         return exec_varassign(jit, ast);
     case AST_ASSIGNMENT:

@@ -167,6 +167,8 @@ void annotate_ast(ast_t * a)
     case AST_TIMES:
     case AST_DIV:
     case AST_MOD:
+    case AST_LSH:
+    case AST_RSH:
     case AST_ASSIGNMENT:
         annotate_ast(a->child->next);
         if (a->tag == AST_ASSIGNMENT)

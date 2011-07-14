@@ -19,6 +19,7 @@ typedef enum {
    AST_IDENT, AST_LVALUE, 
    AST_DOUBLE, AST_INT, AST_BOOL, AST_STRING,
    AST_PLUS, AST_MINUS, AST_TIMES, AST_DIV, AST_MOD,
+   AST_LSH, AST_RSH,
    AST_POST_INC, AST_POST_DEC,
    AST_ASSIGNMENT, AST_VARASSIGN, 
    AST_FNDEC
@@ -41,6 +42,8 @@ extern ast_t * op_minus;
 extern ast_t * op_times;
 extern ast_t * op_div;
 extern ast_t * op_mod;
+extern ast_t * op_lsh;
+extern ast_t * op_rsh;
 
 void ast_init(void);
 

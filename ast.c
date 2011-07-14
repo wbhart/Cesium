@@ -11,6 +11,8 @@ ast_t * op_minus;
 ast_t * op_times;
 ast_t * op_div;
 ast_t * op_mod;
+ast_t * op_lsh;
+ast_t * op_rsh;
 
 void ast_init(void)
 {
@@ -19,6 +21,8 @@ void ast_init(void)
     op_times = ast_op(AST_TIMES);
     op_div = ast_op(AST_DIV);
     op_mod = ast_op(AST_MOD);
+    op_lsh = ast_op(AST_LSH);
+    op_rsh = ast_op(AST_RSH);
 }
 
 ast_t * new_ast(void)
@@ -98,6 +102,12 @@ void ast_print_op(ast_t * a)
     case AST_MOD:
         printf("mod");
         break;
+    case AST_LSH:
+        printf("lsh");
+        break;
+    case AST_RSH:
+        printf("rsh");
+        break;
     }
 }
 
@@ -159,6 +169,8 @@ void ast_print(ast_t * a, int indent)
     case AST_TIMES:
     case AST_DIV:
     case AST_MOD:
+    case AST_LSH:
+    case AST_RSH:
         ast_print_op(a);
         ast_print_type(a);
         printf("\n");
