@@ -134,7 +134,7 @@ void llvm_printbool(jit_t * jit, LLVMValueRef obj)
 }
 
 /*
-   This jits a printf for various cesium typesi. We use it to print
+   This jits a printf for various cesium types. We use it to print
    the result of expressions that are evaluated, before returning from
    a jit'd expression.
 */
@@ -384,8 +384,15 @@ int exec_load(jit_t * jit, ast_t * ast)
     bind_t * bind = find_symbol(ast->sym);
     if (bind->val == NULL)
         jit_exception(jit, "Use of uninitialised value\n");
-    ast->type = bind->type;
-    ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
+    if (ast->val == NULL)
+    {
+        ast->type = bind->type;
+        ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
+    } else
+    {
+        subst_type(&ast->type);
+        ast->val = LLVMBuildLoad(jit->builder, ast->val, bind->sym->name);
+    }
     
     return 0;
 }
@@ -395,28 +402,38 @@ int exec_load(jit_t * jit, ast_t * ast)
 */
 int exec_ident(jit_t * jit, ast_t * ast)
 {
-    bind_t * bind = find_symbol(ast->sym);
-
-    if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
+    if (ast->val == NULL)
     {
-        subst_type(&bind->type); /* fill in the type */
+        bind_t * bind = find_symbol(ast->sym);
 
-        if (bind->type->typ != TYPEVAR) /* if we now know what it is */
+        if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
         {
-            LLVMTypeRef type = typ_to_llvm(bind->type->typ);
-                
-            if (scope_is_global()) /* variable is global */
-                bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);             
-            else
-                bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
+            subst_type(&bind->type); /* fill in the type */
 
-            LLVMSetInitializer(bind->val, LLVMGetUndef(type));
-        } 
-    }
+            if (bind->type->typ != TYPEVAR) /* if we now know what it is */
+            {
+                LLVMTypeRef type = typ_to_llvm(bind->type->typ);
+                
+                if (bind->val != NULL) /* check if the variable is already defined */
+                {                
+                    if (LLVMGetFirstUse(bind->val) == NULL) /* clean it up if not in use */
+                        LLVMDeleteGlobal(bind->val);
+                }
+
+                if (scope_is_global()) /* variable is global */
+                    bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);             
+                else
+                    bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
+
+                LLVMSetInitializer(bind->val, LLVMGetUndef(type));
+            } 
+        }
         
-    ast->type = bind->type;
-    ast->val = bind->val;
-    
+        ast->type = bind->type;
+        ast->val = bind->val;
+    } else
+        subst_type(&ast->type);
+
     return 0;
 }
 
@@ -428,9 +445,9 @@ int exec_assignment(jit_t * jit, ast_t * ast)
     ast_t * id = ast->child;
     ast_t * exp = ast->child->next;
     
-    exec_ident(jit, id);
     exec_ast(jit, exp);
-
+    exec_ident(jit, id);
+    
     LLVMBuildStore(jit->builder, exp->val, id->val);
 
     ast->val = exp->val;

@@ -18,7 +18,7 @@ types.o: types.h types.c
 	gcc -c $(CS_FLAGS) $(CS_INC) types.c -o types.o
 
 unify.o: unify.h unify.c
-	gcc -c $(CS_FLAGS) $(CS_INC) unify.c -o unify.o
+	g++ -c $(CS_FLAGS) $(CS_INC) unify.c -o unify.o
 
 environment.o: environment.h environment.c
 	g++ -c $(CS_FLAGS) $(CS_INC) environment.c -o environment.o

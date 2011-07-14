@@ -7,6 +7,12 @@
 #include "gc.h"
 #include "exception.h"
 
+#include <llvm-c/Core.h>  
+#include <llvm-c/Analysis.h>  
+#include <llvm-c/ExecutionEngine.h>  
+#include <llvm-c/Target.h>  
+#include <llvm-c/Transforms/Scalar.h> 
+
 type_rel_t * rel_stack;
 type_rel_t * rel_assign;
 
@@ -18,7 +24,7 @@ void rel_stack_init(void)
 
 void push_type_rel(type_t * t1, type_t * t2)
 {
-   type_rel_t * t = GC_MALLOC(sizeof(type_rel_t));
+   type_rel_t * t = (type_rel_t *) GC_MALLOC(sizeof(type_rel_t));
    t->t1 = t1;
    t->t2 = t2;
    t->next = rel_stack;
@@ -123,8 +129,10 @@ void annotate_ast(ast_t * a)
     case AST_IDENT:
         b = find_symbol(a->sym);
         if (b != NULL)
+        {
             a->type = b->type;
-        else
+            a->val = b->val;
+        } else
            exception("Unbound symbol\n");
         break;
     case AST_DOUBLE:
@@ -147,25 +155,56 @@ void annotate_ast(ast_t * a)
     case AST_PLUS:
     case AST_MINUS:
     case AST_ASSIGNMENT:
-        annotate_ast(a->child);
         annotate_ast(a->child->next);
+        annotate_ast(a->child);
         a->type = a->child->type;
         push_type_rel(a->type, a->child->next->type);
         break;
     case AST_VARASSIGN:
         t = a->child;
+        scope_mark();
         while (t != NULL)
         {
+            bind_t * bind;
+            sym_t * sym;
             t->type = new_typevar();
             if (t->tag == AST_ASSIGNMENT)
             {
+                annotate_ast(t->child->next);
                 t->child->type = t->type;
-                bind_symbol(t->child->sym, t->type, NULL);
+                sym = t->child->sym;
             } else
-                bind_symbol(t->sym, t->type, NULL);
-            annotate_ast(t);
+                sym = t->sym;
+            
+            bind = find_symbol_in_scope(sym);
+            if (bind != NULL)
+            {
+                if (!scope_is_global())
+                    exception("Attempt to redefine local symbol\n");
+
+                ast_t * s = a->child;
+                sym_t * sym2;
+                while (s != t)
+                {
+                    if (s->tag == AST_ASSIGNMENT)
+                        sym2 = s->child->sym;
+                    else
+                        sym2 = s->sym;
+                    if (sym == sym2)
+                        exception("Immediate redefinition of symbol\n");
+                    s = s->next;
+                }
+
+                bind->type = t->type;
+            } else
+                bind_symbol(sym, t->type, NULL);
+            
+            if (t->tag == AST_ASSIGNMENT)
+                push_type_rel(t->type, t->child->next->type);
+            
             t = t->next;
         }
+        scope_mark();
         a->type = t_nil;
         break;
     }

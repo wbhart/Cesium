@@ -1,10 +1,13 @@
 #include <stdio.h>
+#include "environment.h"
 #include "exception.h"
 
 jmp_buf exc;
 
 void exception(const char * msg)
 {
+   rewind_scope();
+
    fprintf(stderr, msg);
    
    longjmp(exc, 1);

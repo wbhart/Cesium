@@ -28,9 +28,15 @@ void scope_init(void);
 
 int scope_is_global(void);
 
+void scope_mark(void);
+
+void rewind_scope(void);
+
 void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val);
 
 bind_t * find_symbol(sym_t * sym);
+
+bind_t * find_symbol_in_scope(sym_t * sym);
 
 #ifdef __cplusplus
 }
