@@ -23,12 +23,19 @@ var i = 1, j = 1.2, k = i + j;
 
 etc.
 
-You can also do computations with doubles and integers involving +, - and parentheses.
+You can also do computations with doubles and integers involving +, -, *, /, %, <<, >> and parentheses.
 
 123 + 23 - (1 + 27);
 12.3 + 12.1 - (1.2 + 0.1);
+1<<12;
+
+var i = 1.2, j = 2.2, k = i + j - i*j;
 
 etc.
+
+The file "tests" gives a list of other things you can (and can't) do.
+
+Note there are no typeclass checks at the moment. Things like "string"+"more"; typecheck fine, but then just crash. This will be fixed eventually.
 
 Watch this space for updates.
 
