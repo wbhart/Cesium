@@ -392,7 +392,7 @@ __name(jit_t * jit, ast_t * ast)                                      \
     return 0;                                                         \
 }
 
-#define exec_binary_int(__name, __iop, __str)           \
+#define exec_binary1(__name, __iop, __str)              \
 __name(jit_t * jit, ast_t * ast)                        \
 {                                                       \
     ast_t * expr1 = ast->child;                         \
@@ -421,15 +421,19 @@ int exec_binary(exec_div, LLVMBuildFDiv, LLVMBuildSDiv, "div")
 
 int exec_binary(exec_mod, LLVMBuildFRem, LLVMBuildSRem, "mod")
 
-int exec_binary_int(exec_lsh, LLVMBuildShl, "lsh")
+int exec_binary1(exec_lsh, LLVMBuildShl, "lsh")
 
-int exec_binary_int(exec_rsh, LLVMBuildAShr, "rsh")
+int exec_binary1(exec_rsh, LLVMBuildAShr, "rsh")
 
-int exec_binary_int(exec_bitor, LLVMBuildOr, "bitor")
+int exec_binary1(exec_bitor, LLVMBuildOr, "bitor")
 
-int exec_binary_int(exec_bitand, LLVMBuildAnd, "bitand")
+int exec_binary1(exec_bitand, LLVMBuildAnd, "bitand")
 
-int exec_binary_int(exec_bitxor, LLVMBuildXor, "bitxor")
+int exec_binary1(exec_bitxor, LLVMBuildXor, "bitxor")
+
+int exec_binary1(exec_logand, LLVMBuildAnd, "logand")
+
+int exec_binary1(exec_logor, LLVMBuildOr, "logor")
 
 int exec_binary_rel(exec_le, LLVMBuildFCmp, LLVMRealOLE, LLVMBuildICmp, LLVMIntSLE, "le")
 
@@ -586,6 +590,10 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_eq(jit, ast);
     case AST_NE:
         return exec_ne(jit, ast);
+    case AST_LOGAND:
+        return exec_logand(jit, ast);
+    case AST_LOGOR:
+        return exec_logor(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

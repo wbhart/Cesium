@@ -22,6 +22,7 @@ typedef enum {
    AST_LSH, AST_RSH, 
    AST_BITOR, AST_BITAND, AST_BITXOR,
    AST_LE, AST_GE, AST_LT, AST_GT, AST_EQ, AST_NE,
+   AST_LOGAND, AST_LOGOR,
    AST_POST_INC, AST_POST_DEC,
    AST_ASSIGNMENT, AST_VARASSIGN, 
    AST_FNDEC
@@ -55,6 +56,8 @@ extern ast_t * op_lt;
 extern ast_t * op_gt;
 extern ast_t * op_eq;
 extern ast_t * op_ne;
+extern ast_t * op_logand;
+extern ast_t * op_logor;
 
 void ast_init(void);
 

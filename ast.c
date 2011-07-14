@@ -22,6 +22,8 @@ ast_t * op_lt;
 ast_t * op_gt;
 ast_t * op_eq;
 ast_t * op_ne;
+ast_t * op_logand;
+ast_t * op_logor;
 
 void ast_init(void)
 {
@@ -41,6 +43,8 @@ void ast_init(void)
     op_gt = ast_op(AST_GT);
     op_eq = ast_op(AST_EQ);
     op_ne = ast_op(AST_NE);
+    op_logand = ast_op(AST_LOGAND);
+    op_logor = ast_op(AST_LOGOR);
 }
 
 ast_t * new_ast(void)
@@ -153,6 +157,12 @@ void ast_print_op(ast_t * a)
     case AST_NE:
         printf("ne");
         break;
+    case AST_LOGAND:
+        printf("logand");
+        break;
+    case AST_LOGOR:
+        printf("logor");
+        break;
     }
 }
 
@@ -225,6 +235,8 @@ void ast_print(ast_t * a, int indent)
     case AST_GT:
     case AST_EQ:
     case AST_NE:
+    case AST_LOGAND:
+    case AST_LOGOR:
         ast_print_op(a);
         ast_print_type(a);
         printf("\n");

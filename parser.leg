@@ -49,8 +49,10 @@ AssignExp     = Assignment
                  | ( Identifier ShrEQ AssignExp )
                  | ( Identifier ShlEQ AssignExp )
                  | Infix100
-Infix100      = ( Infix90 ( LogOr Infix90 )* )
-Infix90       = ( Infix80 ( LogAnd Infix80 )* )
+Infix100      = ( r:Infix90 ( o:LogOr 
+                  s:Infix90 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
+Infix90       = ( r:Infix80 ( o:LogAnd 
+                  s:Infix80 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
 Infix80       = ( r:Infix70 ( o:BitOr 
                   s:Infix70 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
 Infix70       = ( r:Infix60 ( o:BitXor 
@@ -114,12 +116,12 @@ Decr          = '--' Spacing
 Plus          = '+' Spacing { $$ = op_plus; }
 Minus         = '-' Spacing { $$ = op_minus; }
 LogNot        = '!' Spacing
-LogAnd        = '&&' Spacing
-LogOr         = '||' Spacing
+LogAnd        = '&&' Spacing  { $$ = op_logand; }
+LogOr         = '||' Spacing  { $$ = op_logor; }
 BitNot        = '~' Spacing
-BitAnd        = '&' Spacing  { $$ = op_bitand; }
-BitXor        = '^|' Spacing  { $$ = op_bitxor; }
-BitOr         = '|' Spacing  { $$ = op_bitor; }
+BitAnd        = '&' Spacing { $$ = op_bitand; }
+BitXor        = '^|' Spacing { $$ = op_bitxor; }
+BitOr         = '|' Spacing { $$ = op_bitor; }
 Times         = '*' Spacing { $$ = op_times; }
 Div           = '/' Spacing { $$ = op_div; }
 Mod           = '%' Spacing { $$ = op_mod; }

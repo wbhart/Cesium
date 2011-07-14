@@ -173,6 +173,8 @@ void annotate_ast(ast_t * a)
     case AST_BITAND:
     case AST_BITXOR:
     case AST_ASSIGNMENT:
+    case AST_LOGAND:
+    case AST_LOGOR:
         annotate_ast(a->child->next);
         if (a->tag == AST_ASSIGNMENT)
         {
