@@ -23,13 +23,19 @@ var i = 1, j = 1.2, k = i + j;
 
 etc.
 
-You can also do computations with doubles and integers involving +, -, *, /, %, <<, >> and parentheses.
+You can also do computations with: 
+
+1) doubles and integers 
+2) +, -, *, /, %, <<, >> and parentheses.
+3) &, |, ^|
 
 123 + 23 - (1 + 27);
 12.3 + 12.1 - (1.2 + 0.1);
 1<<12;
 
 var i = 1.2, j = 2.2, k = i + j - i*j;
+
+4378628 & 34328768;
 
 etc.
 

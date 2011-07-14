@@ -51,9 +51,12 @@ AssignExp     = Assignment
                  | Infix100
 Infix100      = ( Infix90 ( LogOr Infix90 )* )
 Infix90       = ( Infix80 ( LogAnd Infix80 )* )
-Infix80       = ( Infix70 ( BitOr Infix70 )* )
-Infix70       = ( Infix60 ( BitXor Infix60 )* )
-Infix60       = ( Infix50 ( BitAnd Infix50 )* )
+Infix80       = ( r:Infix70 ( o:BitOr 
+                  s:Infix70 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
+Infix70       = ( r:Infix60 ( o:BitXor 
+                  s:Infix60 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
+Infix60       = ( r:Infix50 ( o:BitAnd 
+                  s:Infix50 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
 Infix50       = ( Infix40 ( ( EQ | NE ) Infix40 )* )
 Infix40       = ( Infix30 ( ( LE | GE | LT | GT ) Infix30 )* )
 Infix30       = ( r:Infix20 ( ( o:Lsh | o:Rsh) 
@@ -112,9 +115,9 @@ LogNot        = '!' Spacing
 LogAnd        = '&&' Spacing
 LogOr         = '||' Spacing
 BitNot        = '~' Spacing
-BitAnd        = '&' Spacing
-BitXor        = '^|' Spacing
-BitOr         = '|' Spacing
+BitAnd        = '&' Spacing  { $$ = op_bitand; }
+BitXor        = '^|' Spacing  { $$ = op_bitxor; }
+BitOr         = '|' Spacing  { $$ = op_bitor; }
 Times         = '*' Spacing { $$ = op_times; }
 Div           = '/' Spacing { $$ = op_div; }
 Mod           = '%' Spacing { $$ = op_mod; }

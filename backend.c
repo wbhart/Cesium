@@ -406,6 +406,12 @@ int exec_binary_int(exec_lsh, LLVMBuildShl, "lsh")
 
 int exec_binary_int(exec_rsh, LLVMBuildAShr, "rsh")
 
+int exec_binary_int(exec_bitor, LLVMBuildOr, "bitor")
+
+int exec_binary_int(exec_bitand, LLVMBuildAnd, "bitand")
+
+int exec_binary_int(exec_bitxor, LLVMBuildXor, "bitxor")
+
 /*
    Load an identifier
 */
@@ -525,6 +531,12 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_lsh(jit, ast);
     case AST_RSH:
         return exec_rsh(jit, ast);
+    case AST_BITOR:
+        return exec_bitor(jit, ast);
+    case AST_BITAND:
+        return exec_bitand(jit, ast);
+    case AST_BITXOR:
+        return exec_bitxor(jit, ast);
     case AST_VARASSIGN:
         return exec_varassign(jit, ast);
     case AST_ASSIGNMENT:

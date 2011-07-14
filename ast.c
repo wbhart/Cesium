@@ -13,6 +13,9 @@ ast_t * op_div;
 ast_t * op_mod;
 ast_t * op_lsh;
 ast_t * op_rsh;
+ast_t * op_bitor;
+ast_t * op_bitand;
+ast_t * op_bitxor;
 
 void ast_init(void)
 {
@@ -23,6 +26,9 @@ void ast_init(void)
     op_mod = ast_op(AST_MOD);
     op_lsh = ast_op(AST_LSH);
     op_rsh = ast_op(AST_RSH);
+    op_bitor = ast_op(AST_BITOR);
+    op_bitand = ast_op(AST_BITAND);
+    op_bitxor = ast_op(AST_BITXOR);
 }
 
 ast_t * new_ast(void)
@@ -108,6 +114,15 @@ void ast_print_op(ast_t * a)
     case AST_RSH:
         printf("rsh");
         break;
+    case AST_BITOR:
+        printf("bitor");
+        break;
+    case AST_BITAND:
+        printf("bitand");
+        break;
+    case AST_BITXOR:
+        printf("bitxor");
+        break;
     }
 }
 
@@ -171,6 +186,9 @@ void ast_print(ast_t * a, int indent)
     case AST_MOD:
     case AST_LSH:
     case AST_RSH:
+    case AST_BITOR:
+    case AST_BITAND:
+    case AST_BITXOR:
         ast_print_op(a);
         ast_print_type(a);
         printf("\n");
