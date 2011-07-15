@@ -11,21 +11,16 @@ To run it just type:
 
 ./cs
 
-You can't do much at the moment. It will (Hindley-Milner) type check various expressions such as
+It accepts:
 
-var i, j = 1;
-j + 2;
+1) strings: "hello"
+2) booleans: true false
+3) integers: -12345
+4) doubles: 1.23 1.23e-20
 
-and so on, and reject others:
+You can do computations with: 
 
-var i, j = i;
-var i = 1, j = 1.2, k = i + j;
-
-etc.
-
-You can also do computations with: 
-
-1) doubles and integers 
+1) doubles, integers and booleans
 2) +, -, *, /, %, <<, >> and parentheses.
 3) &, |, ^|, ~
 4) <, >, <=, >=, ==, !=
@@ -35,15 +30,15 @@ You can also do computations with:
 8) i&=c, i|=c, i^|=c
 9) i<<=c, i>>=c
 
-123 + 23 - (1 + 27);
-12.3 + 12.1 - (1.2 + 0.1);
-1<<12;
-
 var i = 1.2, j = 2.2, k = i + j - i*j;
 
-4378628 & 34328768;
-
 etc.
+
+The following control flow expressions are valid:
+
+1) if (bool_expr) stmt1 
+2) if (bool_expr) stmt1 ; (useful at the top level)
+3) if (bool_expr) stmt1 else stmt2
 
 The file "tests" gives a list of other things you can (and can't) do.
 

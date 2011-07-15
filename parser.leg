@@ -13,11 +13,14 @@
 }
 %}
 
-start         = Spacing r:Statement ';' { root = r; } 
+start         = Spacing r:TopStatement { root = r; } 
                  | ( !EOL .)* EOL { root = NULL; printf("Syntax error\n"); }
-Statement     = Symtab { print_sym_tab(); }
-                 | VarStmt
-                 | Expression 
+TopStatement  = Symtab ';' { print_sym_tab(); }
+                 | VarStmt ';'
+                 | Statement
+Statement     = IfStmt
+                 | Expression ';'
+                 | ';'
 VarStmt       = Var r:VarAssign 
                  ( Comma s:VarAssign 
               {
@@ -29,6 +32,18 @@ VarStmt       = Var r:VarAssign
                  r = ast_reverse(r);
                  $$ = ast_unary(r, AST_VARASSIGN);
               }
+IfStmt        = ( If LParen e:Expression RParen s1:Statement Spacing Else s2:Statement
+              { 
+                 $$ = ast_stmt3(e, s1, s2, AST_IFELSE); 
+              } )
+              | ( If LParen e:Expression RParen s1:Statement Spacing ';'
+              { 
+                 $$ = ast_stmt2(e, s1, AST_IF); 
+              } )
+              | ( If LParen e:Expression RParen s1:Statement
+              { 
+                 $$ = ast_stmt2(e, s1, AST_IF); 
+              } )
 
 VarAssign     = Assignment | Identifier
 Assignment    = r:Identifier Equals s:AssignExp
@@ -83,6 +98,8 @@ Primary       = ( Boolean | Identifier | Double | IntConst | String
                  | ( LParen Expression RParen ) )
 
 Var           = 'var' Spacing
+If            = 'if' Spacing
+Else          = 'else' Spacing
 Symtab        = 'symtab' Spacing
 Comma         = ',' Spacing
 Identifier    = < IdentStart IdentCont* > Spacing

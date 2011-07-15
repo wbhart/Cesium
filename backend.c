@@ -716,6 +716,80 @@ int exec_varassign(jit_t * jit, ast_t * ast)
 }
 
 /*
+   Declare local/global variables
+*/
+int exec_if(jit_t * jit, ast_t * ast)
+{
+    ast_t * exp = ast->child;
+    ast_t * con = exp->next;
+    int exit1;
+
+    LLVMBasicBlockRef i = LLVMAppendBasicBlock(jit->function, "if");
+    LLVMBasicBlockRef b = LLVMAppendBasicBlock(jit->function, "ifbody");
+    LLVMBasicBlockRef e = LLVMAppendBasicBlock(jit->function, "ifend");
+
+    LLVMBuildBr(jit->builder, i);
+    LLVMPositionBuilderAtEnd(jit->builder, i);  
+    
+    exec_ast(jit, exp); /* expression */
+    
+    LLVMBuildCondBr(jit->builder, exp->val, b, e);
+    LLVMPositionBuilderAtEnd(jit->builder, b); 
+   
+    exit1 = exec_ast(jit, con); /* stmt1 */
+    
+    if (!exit1)
+        LLVMBuildBr(jit->builder, e);
+
+    LLVMPositionBuilderAtEnd(jit->builder, e);  
+
+    return 0;
+}
+
+int exec_ifelse(jit_t * jit, ast_t * ast)
+{
+    ast_t * exp = ast->child;
+    ast_t * con = exp->next;
+    ast_t * alt = con->next;
+    int exit1, exit2;
+
+    LLVMBasicBlockRef i = LLVMAppendBasicBlock(jit->function, "if");
+    LLVMBasicBlockRef b1 = LLVMAppendBasicBlock(jit->function, "ifbody");
+    LLVMBasicBlockRef b2 = LLVMAppendBasicBlock(jit->function, "elsebody");
+    LLVMBasicBlockRef e = LLVMAppendBasicBlock(jit->function, "ifend");
+
+    LLVMBuildBr(jit->builder, i);
+    LLVMPositionBuilderAtEnd(jit->builder, i);  
+    
+    exec_ast(jit, exp); /* expression */
+    
+    LLVMBuildCondBr(jit->builder, exp->val, b1, b2);
+    LLVMPositionBuilderAtEnd(jit->builder, b1); 
+   
+    exit1 = exec_ast(jit, con); /* stmt1 */
+    
+    if (!exit1)
+        LLVMBuildBr(jit->builder, e);
+
+    LLVMPositionBuilderAtEnd(jit->builder, b2);  
+
+    exit2 = exec_ast(jit, alt); /* stmt2 */
+
+    if (!exit2)
+        LLVMBuildBr(jit->builder, e);
+
+    if (exit1 && exit2)
+    {
+        LLVMDeleteBasicBlock(e);
+        return 1;
+    } else 
+    {
+        LLVMPositionBuilderAtEnd(jit->builder, e);  
+        return 0;
+    }
+}
+
+/*
    As we traverse the ast we dispatch on ast tag to various jit 
    functions defined above
 */
@@ -807,6 +881,10 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_lsheq(jit, ast);
     case AST_RSHEQ:
         return exec_rsheq(jit, ast);
+    case AST_IF:
+        return exec_if(jit, ast);
+    case AST_IFELSE:
+        return exec_ifelse(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

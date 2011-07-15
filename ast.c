@@ -104,6 +104,25 @@ ast_t * ast_op(tag_t tag)
    return ast;
 }
 
+ast_t * ast_stmt2(ast_t * a1, ast_t * a2, tag_t tag)
+{
+   ast_t * ast = new_ast();
+   ast->tag = tag;
+   ast->child = a1;
+   a1->next = a2;
+   return ast;
+}
+
+ast_t * ast_stmt3(ast_t * a1, ast_t * a2, ast_t * a3, tag_t tag)
+{
+   ast_t * ast = new_ast();
+   ast->tag = tag;
+   ast->child = a1;
+   a1->next = a2;
+   a2->next = a3;
+   return ast;
+}
+
 ast_t * ast_reverse(ast_t * a)
 {
     ast_t * t = a, * t2;
@@ -343,6 +362,19 @@ void ast_print(ast_t * a, int indent)
             ast_print(t, indent + 3);
             t = t->next;
         }
+        break;
+    case AST_IF:
+        printf("if");
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        ast_print(a->child->next, indent + 3);
+        break;
+    case AST_IFELSE:
+        printf("if_else");
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        ast_print(a->child->next, indent + 3);
+        ast_print(a->child->next->next, indent + 3);
         break;
     }
 }
