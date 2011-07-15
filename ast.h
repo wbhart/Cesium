@@ -29,7 +29,7 @@ typedef enum {
    AST_ANDEQ, AST_OREQ, AST_XOREQ, 
    AST_LSHEQ, AST_RSHEQ,
    AST_ASSIGNMENT, AST_VARASSIGN, 
-   AST_IF, AST_IFELSE, AST_WHILE,
+   AST_IF, AST_IFELSE, AST_WHILE, AST_BREAK,
    AST_BLOCK,
    AST_FNDEC
 } tag_t;
@@ -86,6 +86,8 @@ ast_t * ast_symbol(sym_t * sym, tag_t tag);
 ast_t * ast_unary(ast_t * a, tag_t tag);
 
 ast_t * ast_binary(ast_t * a1, ast_t * a2, ast_t * op);
+
+ast_t * ast_stmt0(tag_t tag);
 
 ast_t * ast_stmt2(ast_t * a1, ast_t * a2, tag_t tag);
 

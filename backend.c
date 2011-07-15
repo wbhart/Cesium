@@ -222,6 +222,7 @@ void llvm_reset(jit_t * jit)
     LLVMDisposeBuilder(jit->builder);
     jit->function = NULL;
     jit->builder = NULL;
+    jit->breakto = NULL;
 }
 
 /*
@@ -822,6 +823,7 @@ int exec_while(jit_t * jit, ast_t * ast)
     ast_t * exp = ast->child;
     ast_t * con = exp->next;
     int exit1;
+    LLVMBasicBlockRef breaksave = jit->breakto;
 
     LLVMBasicBlockRef w = LLVMAppendBasicBlock(jit->function, "while");
     LLVMBasicBlockRef b = LLVMAppendBasicBlock(jit->function, "whilebody");
@@ -835,8 +837,12 @@ int exec_while(jit_t * jit, ast_t * ast)
     LLVMBuildCondBr(jit->builder, exp->val, b, e);
     LLVMPositionBuilderAtEnd(jit->builder, b); 
    
+    jit->breakto = e;
+
     exit1 = exec_ast(jit, con); /* stmt1 */
     
+    jit->breakto = breaksave;
+
     if (!exit1)
         LLVMBuildBr(jit->builder, w);
 
@@ -845,6 +851,18 @@ int exec_while(jit_t * jit, ast_t * ast)
     return 0;
 }
 
+/*
+   Jit a break statement
+*/
+int exec_break(jit_t * jit, ast_t * ast)
+{
+    if (jit->breakto == NULL)
+        jit_exception(jit, "Attempt to break outside loop\n");
+
+    LLVMBuildBr(jit->builder, jit->breakto);
+         
+    return 1;
+}
 
 /*
    As we traverse the ast we dispatch on ast tag to various jit 
@@ -946,6 +964,8 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_block(jit, ast);
     case AST_WHILE:
         return exec_while(jit, ast);
+    case AST_BREAK:
+        return exec_break(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

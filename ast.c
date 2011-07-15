@@ -104,6 +104,13 @@ ast_t * ast_op(tag_t tag)
    return ast;
 }
 
+ast_t * ast_stmt0(tag_t tag)
+{
+   ast_t * ast = new_ast();
+   ast->tag = tag;
+   return ast;
+}
+
 ast_t * ast_stmt2(ast_t * a1, ast_t * a2, tag_t tag)
 {
    ast_t * ast = new_ast();
@@ -392,5 +399,8 @@ void ast_print(ast_t * a, int indent)
         ast_print(a->child, indent + 3);
         ast_print(a->child->next, indent + 3);
         break;
+    case AST_BREAK:
+        printf("break");
+        printf("\n");
     }
 }

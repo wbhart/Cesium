@@ -33,6 +33,7 @@ typedef struct jit_t
     LLVMValueRef nil_str;
     LLVMValueRef true_str;
     LLVMValueRef false_str;
+    LLVMBasicBlockRef breakto;
 } jit_t;
 
 jit_t * llvm_init(void);

@@ -285,6 +285,10 @@ void annotate_ast(ast_t * a)
         }
         scope_down();
         a->type = t_nil;
+        break;
+    case AST_BREAK:
+        a->type = t_nil;
+        break;
     }
 }
 

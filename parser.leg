@@ -23,6 +23,7 @@ TopStatement  = Symtab ';' { print_sym_tab(); }
 Statement     = Spacing IfStmt
                  | Spacing WhileStmt
                  | Spacing BlockStmt
+                 | Spacing Break ';' { $$ = ast_stmt0(AST_BREAK); }
                  | Spacing Expression ';'
                  | Spacing ';'
 VarStmt       = Var r:VarAssign 
@@ -125,6 +126,7 @@ Var           = 'var' Spacing
 If            = 'if' Spacing
 Else          = 'else' Spacing
 While         = 'while' Spacing
+Break         = 'break' Spacing
 Symtab        = 'symtab' Spacing
 Comma         = ',' Spacing
 Identifier    = < IdentStart IdentCont* > Spacing

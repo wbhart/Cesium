@@ -40,7 +40,8 @@ The following control flow expressions are valid:
 2) if (bool_expr) stmt1 ; (useful at the top level)
 3) if (bool_expr) stmt1 else stmt2
 4) while (bool_expr) stmt1
-5) { stmt; ... }
+5) break;
+6) { stmt; ... }
 
 The file "tests" gives a lot of examples of things you can (and can't) do.
 

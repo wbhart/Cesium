@@ -16,6 +16,7 @@ void exception(const char * msg)
 void jit_exception(jit_t * jit, const char * msg)
 {
    llvm_reset(jit);
+   rewind_scope();
 
    fprintf(stderr, msg);
 

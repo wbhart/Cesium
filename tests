@@ -182,4 +182,22 @@ while (i < 1000000000) {
 }
 i = s = 0;
 while (i < 1000000000) s += i++;
+var i = 0;
+break;
+{
+   break;
+}
+while (i < 1000) break;
+while (i < 1000) {
+   break;
+}
+while (i < 1000) {
+   if (i == 10) break;
+   else break;
+}
+while (i < 1000) {
+   if (i == 10) break;
+   i++;
+}
+i;
 
