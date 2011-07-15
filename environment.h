@@ -26,11 +26,17 @@ extern env_t * current_scope;
 
 void scope_init(void);
 
-int scope_is_global(void);
+int scope_is_global(bind_t * bind);
 
 void scope_mark(void);
 
 void rewind_scope(void);
+
+void scope_up(void);
+
+void scope_down(void);
+
+void scope_print(void);
 
 void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val);
 

@@ -140,8 +140,14 @@ void annotate_ast(ast_t * a)
         b = find_symbol(a->sym);
         if (b != NULL)
         {
-            b->type = a->type;
-            a->val = b->val;
+             if (b->type == t_nil)
+             {
+                 a->type = new_typevar();
+                 b->type = a->type;
+             }
+             else
+                 a->type = b->type;
+             a->val = b->val;
         } else
            exception("Unbound symbol\n");
         break;
@@ -192,10 +198,7 @@ void annotate_ast(ast_t * a)
     case AST_RSHEQ:
         annotate_ast(a->child->next);
         if (a->tag == AST_ASSIGNMENT)
-        {
             a->child->tag = AST_LVALUE;
-            a->child->type = new_typevar();
-        }
         annotate_ast(a->child);
         a->type = a->child->type;
         push_type_rel(a->type, a->child->next->type);
@@ -233,7 +236,7 @@ void annotate_ast(ast_t * a)
             bind = find_symbol_in_scope(sym);
             if (bind != NULL)
             {
-                if (!scope_is_global())
+                if (!scope_is_global(bind))
                     exception("Attempt to redefine local symbol\n");
 
                 ast_t * s = a->child;
@@ -251,7 +254,6 @@ void annotate_ast(ast_t * a)
             }
                 
             bind_symbol(sym, t->type, NULL);
-            
             if (t->tag == AST_ASSIGNMENT)
                 push_type_rel(t->type, t->child->next->type);
             
@@ -270,6 +272,16 @@ void annotate_ast(ast_t * a)
         annotate_ast(a->child->next->next);
         a->type = t_nil;
         break;
+    case AST_BLOCK:
+        t = a->child;
+        current_scope = a->env;
+        while (t != NULL)
+        {
+            annotate_ast(t);
+            t = t->next;
+        }
+        scope_down();
+        a->type = t_nil;
     }
 }
 

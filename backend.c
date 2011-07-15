@@ -5,6 +5,7 @@
 
 #include "environment.h"
 #include "exception.h"
+#include "environment.h"
 #include "backend.h"
 #include "unify.h"
 #include "gc.h"
@@ -659,12 +660,12 @@ int exec_ident(jit_t * jit, ast_t * ast)
         {
             LLVMTypeRef type = typ_to_llvm(bind->type->typ);
                 
-            if (scope_is_global()) /* variable is global */
-                bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);             
-            else
+            if (scope_is_global(bind)) /* variable is global */
+            {
+                bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);
+                LLVMSetInitializer(bind->val, LLVMGetUndef(type));
+            } else
                 bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
-
-            LLVMSetInitializer(bind->val, LLVMGetUndef(type));
         }   
     }
         
@@ -790,6 +791,27 @@ int exec_ifelse(jit_t * jit, ast_t * ast)
 }
 
 /*
+   Declare local/global variables
+*/
+int exec_block(jit_t * jit, ast_t * ast)
+{
+    ast_t * c = ast->child;
+    current_scope = ast->env;
+    int exit1;
+
+    while (c != NULL)
+    {
+        exit1 = exec_ast(jit, c);
+                    
+        c = c->next;
+    }
+
+    scope_down();
+
+    return exit1;
+}
+
+/*
    As we traverse the ast we dispatch on ast tag to various jit 
    functions defined above
 */
@@ -885,6 +907,8 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_if(jit, ast);
     case AST_IFELSE:
         return exec_ifelse(jit, ast);
+    case AST_BLOCK:
+        return exec_block(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

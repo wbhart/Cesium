@@ -145,3 +145,33 @@ if (i == 1) i++; else i--;
 if (i == 1) i++;
 else i--;
 if (i == 1) if (i == 1) i++;; else if (i == 2) i--;;
+{
+   var i = 1;
+   i++;
+}
+{
+   var i = 1;
+   var i = 1;
+}
+var j = 1;
+{
+   var j = 3;
+   j++;
+}
+j;
+if (i == 1) {
+   i++; i++;
+} else
+{ 
+  i--; i--;
+}
+var i = 2;
+{
+   var j = 4;
+   i += j;
+}
+i;
+{
+   var j;
+   i += j;
+}

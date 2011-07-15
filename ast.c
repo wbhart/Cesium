@@ -376,5 +376,15 @@ void ast_print(ast_t * a, int indent)
         ast_print(a->child->next, indent + 3);
         ast_print(a->child->next->next, indent + 3);
         break;
+    case AST_BLOCK:
+        printf("block");
+        printf("\n");
+        t = a->child;
+        while (t != NULL)
+        {
+            ast_print(t, indent + 3);
+            t = t->next;
+        }
+        break;
     }
 }

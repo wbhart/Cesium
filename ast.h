@@ -30,6 +30,7 @@ typedef enum {
    AST_LSHEQ, AST_RSHEQ,
    AST_ASSIGNMENT, AST_VARASSIGN, 
    AST_IF, AST_IFELSE,
+   AST_BLOCK,
    AST_FNDEC
 } tag_t;
 

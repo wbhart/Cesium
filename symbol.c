@@ -7,13 +7,13 @@ sym_t ** sym_tab;
 
 void sym_tab_init(void)
 {
-    sym_tab = GC_MALLOC(SYM_TAB_SIZE*sizeof(sym_t *));
+    sym_tab = (sym_t **) GC_MALLOC(SYM_TAB_SIZE*sizeof(sym_t *));
 }
 
 sym_t * new_symbol(char * name, int length)
 {
-   sym_t * sym = GC_MALLOC(sizeof(sym_t));
-   sym->name = GC_MALLOC(length + 1);
+   sym_t * sym = (sym_t *) GC_MALLOC(sizeof(sym_t));
+   sym->name = (char *) GC_MALLOC(length + 1);
    strcpy(sym->name, name);
    return sym;
 }

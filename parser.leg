@@ -1,7 +1,9 @@
 %{
+#include <stdio.h>
 #include "ast.h"
 #include "symbol.h"
 #include "exception.h"
+#include "environment.h"
 
 #define YYSTYPE ast_t *
 
@@ -16,18 +18,19 @@
 start         = Spacing r:TopStatement { root = r; } 
                  | ( !EOL .)* EOL { root = NULL; printf("Syntax error\n"); }
 TopStatement  = Symtab ';' { print_sym_tab(); }
-                 | VarStmt ';'
+                 | VarStmt
                  | Statement
-Statement     = IfStmt
-                 | Expression ';'
-                 | ';'
+Statement     = Spacing IfStmt
+                 | Spacing BlockStmt
+                 | Spacing Expression ';'
+                 | Spacing ';'
 VarStmt       = Var r:VarAssign 
                  ( Comma s:VarAssign 
               {
-                 s->next = r;
+                s->next = r;
                  r = s;
               }
-                 )*
+                 )* ';'
               {
                  r = ast_reverse(r);
                  $$ = ast_unary(r, AST_VARASSIGN);
@@ -35,15 +38,31 @@ VarStmt       = Var r:VarAssign
 IfStmt        = ( If LParen e:Expression RParen s1:Statement Spacing Else s2:Statement
               { 
                  $$ = ast_stmt3(e, s1, s2, AST_IFELSE); 
-              } )
+              } 
+                )
               | ( If LParen e:Expression RParen s1:Statement Spacing ';'
               { 
                  $$ = ast_stmt2(e, s1, AST_IF); 
-              } )
+              } 
+                )
               | ( If LParen e:Expression RParen s1:Statement
               { 
                  $$ = ast_stmt2(e, s1, AST_IF); 
-              } )
+              } 
+                )
+BlockStmt     = LBrace { scope_up(); } ( Spacing r:VarStmt | r:Statement )
+                ( ( Spacing s:VarStmt | s:Statement )
+              {
+                  s->next = r;
+                  r = s;
+              }
+                )* RBrace 
+              {  
+                  r = ast_reverse(r);
+                  $$ = ast_unary(r, AST_BLOCK);
+                  $$->env = current_scope;
+                  scope_down();
+              }
 
 VarAssign     = Assignment | Identifier
 Assignment    = r:Identifier Equals s:AssignExp
@@ -133,6 +152,8 @@ Comment1      = '//' ( !EOL . )* EOL
 Comment2      = '/*' ( !'*/' . )* '*/'
 LParen        = '(' Spacing
 RParen        = ')' Spacing
+LBrace        = '{' Spacing
+RBrace        = Spacing '}'
 Incr          = '++' Spacing
 Decr          = '--' Spacing
 Plus          = '+' Spacing { $$ = op_plus; }

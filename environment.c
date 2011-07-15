@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "gc.h"
 #include "symbol.h"
 #include "environment.h"
@@ -14,14 +15,23 @@ bind_t * scope_ptr;
 void scope_init(void)
 {
    current_scope = (env_t *) GC_MALLOC(sizeof(env_t));
-   current_scope->next = NULL;
-   current_scope->scope = NULL;
    scope_ptr = NULL;
 }
 
-int scope_is_global(void)
+int scope_is_global(bind_t * bind)
 {
-   return current_scope->next == NULL;
+   env_t * s = current_scope;
+   while (s->next != NULL)
+      s = s->next;
+
+   bind_t * b = s->scope;
+   while (b != NULL)
+   {
+      if (b == bind)
+         return 1;
+      b = b->next;
+   }
+   return 0;
 }
 
 void scope_mark(void)
@@ -29,10 +39,50 @@ void scope_mark(void)
    scope_ptr = current_scope->scope;
 }
 
+void scope_up(void)
+{
+   env_t * env = (env_t *) GC_MALLOC(sizeof(env_t));
+   env->next = current_scope;
+   current_scope = env;
+   scope_ptr = NULL;   
+}
+
+void scope_down(void)
+{
+   current_scope = current_scope->next;
+}
+
 void rewind_scope()
 {
-    while (current_scope->scope != scope_ptr)
-        current_scope->scope = current_scope->scope->next;
+    if (current_scope->next != NULL)
+    {
+        while (current_scope->next != NULL)
+            scope_down();
+        scope_ptr = NULL;
+    }
+    else
+        while (current_scope->scope != scope_ptr)
+            current_scope->scope = current_scope->scope->next;
+}
+
+void scope_print(void)
+{
+   printf("Scope:\n");
+   env_t * s = current_scope;
+   
+   while (s != NULL)
+   {
+      bind_t * bind = current_scope->scope;
+  
+      while (bind != NULL)
+      {
+         printf("%s\n", bind->sym->name);
+         bind = bind->next;
+      }
+      printf("----\n");
+ 
+      s = s->next;
+  }
 }
 
 void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val)
@@ -48,13 +98,21 @@ void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val)
 
 bind_t * find_symbol(sym_t * sym)
 {
-   bind_t * b = current_scope->scope;
+   env_t * s = current_scope;
+   bind_t * b;
 
-   while (b != NULL)
+   while (s != NULL)
    {
-      if (b->sym == sym)
-         return b;
-      b = b->next;
+      b = s->scope;
+ 
+      while (b != NULL)
+      {
+         if (b->sym == sym)
+            return b;
+         b = b->next;
+      }
+      
+      s = s->next;
    }
 
    return NULL;
