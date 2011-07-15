@@ -38,16 +38,16 @@ Assignment    = r:Identifier Equals s:AssignExp
               }
 Expression    = AssignExp
 AssignExp     = Assignment
-                 | ( Identifier PlusEQ AssignExp )
-                 | ( Identifier MinusEQ AssignExp )
-                 | ( Identifier TimesEQ AssignExp )
-                 | ( Identifier DivEQ AssignExp )
-                 | ( Identifier ModEQ AssignExp )
-                 | ( Identifier AndEQ AssignExp )
-                 | ( Identifier OrEQ AssignExp )
-                 | ( Identifier XorEQ AssignExp )
-                 | ( Identifier ShrEQ AssignExp )
-                 | ( Identifier ShlEQ AssignExp )
+                 | ( r:Identifier o:PlusEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:Identifier o:MinusEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:Identifier o:TimesEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:Identifier o:DivEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:Identifier o:ModEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:Identifier o:AndEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:Identifier o:OrEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:Identifier o:XorEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:Identifier o:RshEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:Identifier o:LshEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
                  | Infix100
 Infix100      = ( r:Infix90 ( o:LogOr 
                   s:Infix90 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
@@ -139,16 +139,16 @@ GE            = '>=' Spacing { $$ = op_ge; }
 EQ            = '==' Spacing { $$ = op_eq; }
 NE            = '!=' Spacing { $$ = op_ne; }
 Equals        = '=' Spacing
-PlusEQ        = '+=' Spacing
-MinusEQ       = '-=' Spacing
-TimesEQ       = '*=' Spacing
-DivEQ         = '/=' Spacing
-ModEQ         = '%=' Spacing
-AndEQ         = '&=' Spacing
-OrEQ          = '|=' Spacing
-XorEQ         = '^|=' Spacing
-ShrEQ         = '>>=' Spacing
-ShlEQ         = '<<=' Spacing
+PlusEQ        = '+=' Spacing { $$ = op_pluseq; }
+MinusEQ       = '-=' Spacing { $$ = op_minuseq; }
+TimesEQ       = '*=' Spacing { $$ = op_timeseq; }
+DivEQ         = '/=' Spacing { $$ = op_diveq; }
+ModEQ         = '%=' Spacing { $$ = op_modeq; }
+AndEQ         = '&=' Spacing { $$ = op_andeq; }
+OrEQ          = '|=' Spacing { $$ = op_oreq; }
+XorEQ         = '^|=' Spacing { $$ = op_xoreq; }
+RshEQ         = '>>=' Spacing { $$ = op_rsheq; }
+LshEQ         = '<<=' Spacing { $$ = op_lsheq; }
 True          = < 'true' > Spacing 
               {
                  sym_t * sym = sym_lookup(yytext);

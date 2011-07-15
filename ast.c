@@ -24,6 +24,16 @@ ast_t * op_eq;
 ast_t * op_ne;
 ast_t * op_logand;
 ast_t * op_logor;
+ast_t * op_pluseq;
+ast_t * op_minuseq;
+ast_t * op_timeseq;
+ast_t * op_diveq;
+ast_t * op_modeq;
+ast_t * op_andeq;
+ast_t * op_oreq;
+ast_t * op_xoreq;
+ast_t * op_lsheq;
+ast_t * op_rsheq;
 
 void ast_init(void)
 {
@@ -45,6 +55,16 @@ void ast_init(void)
     op_ne = ast_op(AST_NE);
     op_logand = ast_op(AST_LOGAND);
     op_logor = ast_op(AST_LOGOR);
+    op_pluseq = ast_op(AST_PLUSEQ);
+    op_minuseq = ast_op(AST_MINUSEQ);
+    op_timeseq = ast_op(AST_TIMESEQ);
+    op_diveq = ast_op(AST_DIVEQ);
+    op_modeq = ast_op(AST_MODEQ);
+    op_andeq = ast_op(AST_ANDEQ);
+    op_oreq = ast_op(AST_OREQ);
+    op_xoreq = ast_op(AST_XOREQ);
+    op_lsheq = ast_op(AST_LSHEQ);
+    op_rsheq = ast_op(AST_RSHEQ);
 }
 
 ast_t * new_ast(void)
@@ -184,6 +204,36 @@ void ast_print_op(ast_t * a)
     case AST_PRE_DEC:
         printf("pre-dec");
         break;
+    case AST_PLUSEQ:
+        printf("pluseq");
+        break;
+    case AST_MINUSEQ:
+        printf("minuseq");
+        break;
+    case AST_TIMESEQ:
+        printf("timeseq");
+        break;
+    case AST_DIVEQ:
+        printf("diveq");
+        break;
+    case AST_MODEQ:
+        printf("modeq");
+        break;
+    case AST_ANDEQ:
+        printf("andeq");
+        break;
+    case AST_OREQ:
+        printf("oreq");
+        break;
+    case AST_XOREQ:
+        printf("xoreq");
+        break;
+    case AST_LSHEQ:
+        printf("lsheq");
+        break;
+    case AST_RSHEQ:
+        printf("rsheq");
+        break;
     }
 }
 
@@ -261,6 +311,16 @@ void ast_print(ast_t * a, int indent)
     case AST_NE:
     case AST_LOGAND:
     case AST_LOGOR:
+    case AST_PLUSEQ:
+    case AST_MINUSEQ:
+    case AST_TIMESEQ:
+    case AST_DIVEQ:
+    case AST_MODEQ:
+    case AST_ANDEQ:
+    case AST_OREQ:
+    case AST_XOREQ:
+    case AST_LSHEQ:
+    case AST_RSHEQ:
         ast_print_op(a);
         ast_print_type(a);
         printf("\n");

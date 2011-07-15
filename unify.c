@@ -180,6 +180,16 @@ void annotate_ast(ast_t * a)
     case AST_ASSIGNMENT:
     case AST_LOGAND:
     case AST_LOGOR:
+    case AST_PLUSEQ:
+    case AST_MINUSEQ:
+    case AST_TIMESEQ:
+    case AST_DIVEQ:
+    case AST_MODEQ:
+    case AST_ANDEQ:
+    case AST_OREQ:
+    case AST_XOREQ:
+    case AST_LSHEQ:
+    case AST_RSHEQ:
         annotate_ast(a->child->next);
         if (a->tag == AST_ASSIGNMENT)
         {

@@ -407,8 +407,8 @@ __name(jit_t * jit, ast_t * ast)                                \
                                                                 \
     exec_ident(jit, expr1);                                     \
                                                                 \
-    LLVMValueRef v1 = LLVMBuildLoad(jit->builder,                \
-                      expr1->val, expr1->sym->name);             \
+    LLVMValueRef v1 = LLVMBuildLoad(jit->builder,               \
+                      expr1->val, expr1->sym->name);            \
                                                                 \
     if (expr1->type == t_double)                                \
        ast->val = __fop(jit->builder, v1,                       \
@@ -524,6 +524,49 @@ __name(jit_t * jit, ast_t * ast)                        \
     return 0;                                           \
 }
 
+#define exec_binary_pre(__name, __fop, __iop, __str)          \
+__name(jit_t * jit, ast_t * ast)                              \
+{                                                             \
+    ast_t * expr1 = ast->child;                               \
+    ast_t * expr2 = ast->child->next;                         \
+                                                              \
+    exec_ident(jit, expr1);                                   \
+    exec_ast(jit, expr2);                                     \
+                                                              \
+    LLVMValueRef v1 = LLVMBuildLoad(jit->builder,             \
+                      expr1->val, expr1->sym->name);          \
+                                                              \
+    if (expr1->type == t_double)                              \
+       ast->val = __fop(jit->builder, v1, expr2->val, __str); \
+    else                                                      \
+       ast->val = __iop(jit->builder, v1, expr2->val, __str); \
+    LLVMBuildStore(jit->builder, ast->val, expr1->val);       \
+                                                              \
+    ast->type = expr1->type;                                  \
+                                                              \
+    return 0;                                                 \
+}
+
+#define exec_binary_pre1(__name, __iop, __str)                \
+__name(jit_t * jit, ast_t * ast)                              \
+{                                                             \
+    ast_t * expr1 = ast->child;                               \
+    ast_t * expr2 = ast->child->next;                         \
+                                                              \
+    exec_ident(jit, expr1);                                   \
+    exec_ast(jit, expr2);                                     \
+                                                              \
+    LLVMValueRef v1 = LLVMBuildLoad(jit->builder,             \
+                      expr1->val, expr1->sym->name);          \
+                                                              \
+    ast->val = __iop(jit->builder, v1, expr2->val, __str);    \
+    LLVMBuildStore(jit->builder, ast->val, expr1->val);       \
+                                                              \
+    ast->type = expr1->type;                                  \
+                                                              \
+    return 0;                                                 \
+}
+
 /* Jit add, sub, .... ops */
 int exec_binary(exec_plus, LLVMBuildFAdd, LLVMBuildAdd, "add")
 
@@ -560,6 +603,26 @@ int exec_binary_rel(exec_gt, LLVMBuildFCmp, LLVMRealOGT, LLVMBuildICmp, LLVMIntS
 int exec_binary_rel(exec_eq, LLVMBuildFCmp, LLVMRealOEQ, LLVMBuildICmp, LLVMIntEQ, "eq")
 
 int exec_binary_rel(exec_ne, LLVMBuildFCmp, LLVMRealONE, LLVMBuildICmp, LLVMIntNE, "ne")
+
+int exec_binary_pre(exec_pluseq, LLVMBuildFAdd, LLVMBuildAdd, "pluseq")
+
+int exec_binary_pre(exec_minuseq, LLVMBuildFSub, LLVMBuildSub, "minuseq")
+
+int exec_binary_pre(exec_timeseq, LLVMBuildFMul, LLVMBuildMul, "timeseq")
+
+int exec_binary_pre(exec_diveq, LLVMBuildFDiv, LLVMBuildSDiv, "diveq")
+
+int exec_binary_pre(exec_modeq, LLVMBuildFRem, LLVMBuildSRem, "modeq")
+
+int exec_binary_pre1(exec_andeq, LLVMBuildAnd, "andeq")
+
+int exec_binary_pre1(exec_oreq, LLVMBuildOr, "oreq")
+
+int exec_binary_pre1(exec_xoreq, LLVMBuildXor, "xoreq")
+
+int exec_binary_pre1(exec_lsheq, LLVMBuildShl, "lsheq")
+
+int exec_binary_pre1(exec_rsheq, LLVMBuildAShr, "rsheq")
 
 /*
    Load an identifier
@@ -724,6 +787,26 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_postinc(jit, ast);
     case AST_POST_DEC:
         return exec_postdec(jit, ast);
+    case AST_PLUSEQ:
+        return exec_pluseq(jit, ast);
+    case AST_MINUSEQ:
+        return exec_minuseq(jit, ast);
+    case AST_TIMESEQ:
+        return exec_timeseq(jit, ast);
+    case AST_DIVEQ:
+        return exec_diveq(jit, ast);
+    case AST_MODEQ:
+        return exec_modeq(jit, ast);
+    case AST_ANDEQ:
+        return exec_andeq(jit, ast);
+    case AST_OREQ:
+        return exec_oreq(jit, ast);
+    case AST_XOREQ:
+        return exec_xoreq(jit, ast);
+    case AST_LSHEQ:
+        return exec_lsheq(jit, ast);
+    case AST_RSHEQ:
+        return exec_rsheq(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

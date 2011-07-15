@@ -25,6 +25,9 @@ typedef enum {
    AST_LOGAND, AST_LOGOR,
    AST_POST_INC, AST_POST_DEC, AST_PRE_INC, AST_PRE_DEC,
    AST_LOGNOT, AST_BITNOT, AST_UNMINUS,
+   AST_PLUSEQ, AST_MINUSEQ, AST_TIMESEQ, AST_DIVEQ, AST_MODEQ,
+   AST_ANDEQ, AST_OREQ, AST_XOREQ, 
+   AST_LSHEQ, AST_RSHEQ,
    AST_ASSIGNMENT, AST_VARASSIGN, 
    AST_FNDEC
 } tag_t;
@@ -61,6 +64,16 @@ extern ast_t * op_logand;
 extern ast_t * op_logor;
 extern ast_t * const_true;
 extern ast_t * const_false;
+extern ast_t * op_pluseq;
+extern ast_t * op_minuseq;
+extern ast_t * op_timeseq;
+extern ast_t * op_diveq;
+extern ast_t * op_modeq;
+extern ast_t * op_andeq;
+extern ast_t * op_oreq;
+extern ast_t * op_xoreq;
+extern ast_t * op_lsheq;
+extern ast_t * op_rsheq;
 
 void ast_init(void);
 
