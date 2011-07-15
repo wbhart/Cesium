@@ -717,7 +717,7 @@ int exec_varassign(jit_t * jit, ast_t * ast)
 }
 
 /*
-   Declare local/global variables
+   Jit an if statement
 */
 int exec_if(jit_t * jit, ast_t * ast)
 {
@@ -747,6 +747,9 @@ int exec_if(jit_t * jit, ast_t * ast)
     return 0;
 }
 
+/*
+   Jit an if..else statement
+*/
 int exec_ifelse(jit_t * jit, ast_t * ast)
 {
     ast_t * exp = ast->child;
@@ -791,7 +794,7 @@ int exec_ifelse(jit_t * jit, ast_t * ast)
 }
 
 /*
-   Declare local/global variables
+   Jit a block of statements
 */
 int exec_block(jit_t * jit, ast_t * ast)
 {
@@ -810,6 +813,38 @@ int exec_block(jit_t * jit, ast_t * ast)
 
     return exit1;
 }
+
+/*
+   Jit a while statement
+*/
+int exec_while(jit_t * jit, ast_t * ast)
+{
+    ast_t * exp = ast->child;
+    ast_t * con = exp->next;
+    int exit1;
+
+    LLVMBasicBlockRef w = LLVMAppendBasicBlock(jit->function, "while");
+    LLVMBasicBlockRef b = LLVMAppendBasicBlock(jit->function, "whilebody");
+    LLVMBasicBlockRef e = LLVMAppendBasicBlock(jit->function, "whileend");
+
+    LLVMBuildBr(jit->builder, w);
+    LLVMPositionBuilderAtEnd(jit->builder, w);  
+    
+    exec_ast(jit, exp); /* expression */
+    
+    LLVMBuildCondBr(jit->builder, exp->val, b, e);
+    LLVMPositionBuilderAtEnd(jit->builder, b); 
+   
+    exit1 = exec_ast(jit, con); /* stmt1 */
+    
+    if (!exit1)
+        LLVMBuildBr(jit->builder, w);
+
+    LLVMPositionBuilderAtEnd(jit->builder, e);  
+
+    return 0;
+}
+
 
 /*
    As we traverse the ast we dispatch on ast tag to various jit 
@@ -909,6 +944,8 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_ifelse(jit, ast);
     case AST_BLOCK:
         return exec_block(jit, ast);
+    case AST_WHILE:
+        return exec_while(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

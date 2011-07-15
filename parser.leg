@@ -21,6 +21,7 @@ TopStatement  = Symtab ';' { print_sym_tab(); }
                  | VarStmt
                  | Statement
 Statement     = Spacing IfStmt
+                 | Spacing WhileStmt
                  | Spacing BlockStmt
                  | Spacing Expression ';'
                  | Spacing ';'
@@ -62,6 +63,10 @@ BlockStmt     = LBrace { scope_up(); } ( Spacing r:VarStmt | r:Statement )
                   $$ = ast_unary(r, AST_BLOCK);
                   $$->env = current_scope;
                   scope_down();
+              }
+WhileStmt     = While LParen e:Expression RParen s1:Statement
+              {
+                  $$ = ast_stmt2(e, s1, AST_WHILE);
               }
 
 VarAssign     = Assignment | Identifier
@@ -119,6 +124,7 @@ Primary       = ( Boolean | Identifier | Double | IntConst | String
 Var           = 'var' Spacing
 If            = 'if' Spacing
 Else          = 'else' Spacing
+While         = 'while' Spacing
 Symtab        = 'symtab' Spacing
 Comma         = ',' Spacing
 Identifier    = < IdentStart IdentCont* > Spacing

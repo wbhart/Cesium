@@ -386,5 +386,11 @@ void ast_print(ast_t * a, int indent)
             t = t->next;
         }
         break;
+    case AST_WHILE:
+        printf("while");
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        ast_print(a->child->next, indent + 3);
+        break;
     }
 }

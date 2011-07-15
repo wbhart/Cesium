@@ -262,15 +262,18 @@ void annotate_ast(ast_t * a)
         a->type = t_nil;
         break;
     case AST_IF:
+    case AST_WHILE:
         annotate_ast(a->child);
         annotate_ast(a->child->next);
         a->type = t_nil;
+        push_type_rel(a->child->type, t_bool);
         break;
     case AST_IFELSE:
         annotate_ast(a->child);
         annotate_ast(a->child->next);
         annotate_ast(a->child->next->next);
         a->type = t_nil;
+        push_type_rel(a->child->type, t_bool);
         break;
     case AST_BLOCK:
         t = a->child;
