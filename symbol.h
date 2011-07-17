@@ -24,7 +24,7 @@ void sym_tab_init(void);
 
 void print_sym_tab(void);
 
-sym_t * sym_lookup(char * name);
+sym_t * sym_lookup(const char * name);
 
 #ifdef __cplusplus
 }

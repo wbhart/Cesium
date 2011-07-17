@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "gc.h"
+#include "unify.h"
 #include "symbol.h"
 #include "environment.h"
 
@@ -94,6 +95,18 @@ void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val)
    b->val = val;
    b->next = scope;
    current_scope->scope = b;
+}
+
+void bind_lambda(sym_t * sym, type_t * type, ast_t * ast)
+{
+   bind_t * scope = current_scope->scope;
+   bind_t * b = (bind_t *) GC_MALLOC(sizeof(bind_t));
+   b->sym = sym;
+   b->type = type;
+   b->ast = ast;
+   b->next = scope;
+   current_scope->scope = b;
+
 }
 
 bind_t * find_symbol(sym_t * sym)

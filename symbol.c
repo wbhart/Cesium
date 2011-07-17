@@ -10,7 +10,7 @@ void sym_tab_init(void)
     sym_tab = (sym_t **) GC_MALLOC(SYM_TAB_SIZE*sizeof(sym_t *));
 }
 
-sym_t * new_symbol(char * name, int length)
+sym_t * new_symbol(const char * name, int length)
 {
    sym_t * sym = (sym_t *) GC_MALLOC(sizeof(sym_t));
    sym->name = (char *) GC_MALLOC(length + 1);
@@ -26,7 +26,7 @@ void print_sym_tab(void)
             printf("%s\n", sym_tab[i]->name);
 }
 
-int sym_hash(char * name, int length)
+int sym_hash(const char * name, int length)
 {
     int hash = (int) name[0];
     int i;
@@ -35,7 +35,7 @@ int sym_hash(char * name, int length)
     return hash % SYM_TAB_SIZE;
 }
 
-sym_t * sym_lookup(char * name)
+sym_t * sym_lookup(const char * name)
 {
    int length = strlen(name);
    int hash = sym_hash(name, length);

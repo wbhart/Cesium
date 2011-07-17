@@ -33,7 +33,7 @@ int type_equal(type_t * t1, type_t * t2);
 
 type_t * typ_to_type(typ_t);
 
-type_t * fn_type(type_t * ret, int num, type_t ** param, int variadic);
+type_t * fn_type(type_t * ret, int num, type_t ** param);
 
 type_t * new_typevar(void);
 

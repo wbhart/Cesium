@@ -47,6 +47,9 @@ void type_subst_type(type_t ** tin, type_rel_t * rel)
     type_t * t = *tin;
     int i;
 
+    if (t == NULL)
+        return;
+    
     if (t->typ == TYPEVAR)
     {
         if (*tin == rel->t1)
@@ -98,7 +101,9 @@ void unify(type_rel_t * rels, type_rel_t * ass)
     while (rel_stack != NULL)
     {
         type_rel_t * rel = pop_type_rel();
-        if (rel->t1->typ == TYPEVAR)
+        if (rel->t1 == rel->t2)
+            continue;
+        else if (rel->t1->typ == TYPEVAR)
         {
             rels_subst(rel_stack, rel);
             ass_subst(rel_assign, rel);
@@ -121,8 +126,13 @@ void unify(type_rel_t * rels, type_rel_t * ass)
 
 void annotate_ast(ast_t * a)
 {
-    ast_t * t;
+    ast_t * t, * p;
     bind_t * b;
+    type_t * retty;
+    type_t ** param;
+    bind_t * bind;
+    sym_t * sym;
+    int count;
 
     switch (a->tag)
     {
@@ -288,6 +298,96 @@ void annotate_ast(ast_t * a)
         break;
     case AST_BREAK:
         a->type = t_nil;
+        break;
+    case AST_RETURN:
+        b = find_symbol(a->sym);
+        if (b == NULL)
+            exception("Returning outside a function\n");
+        if (a->child == NULL)
+            a->type = t_nil;
+        else
+        {
+           annotate_ast(a->child);
+           push_type_rel(b->type, a->child->type);
+           a->type = t_nil;
+        }
+        break;
+    case AST_FNDEC:
+        count = 0;
+        t = a->child->next;
+        scope_mark();
+
+        p = t->child; /* count params */
+        while (p != NULL)
+        {
+            count++;
+            p = p->next;
+        }
+
+        /* inject parameters into scope */
+        current_scope = a->env;
+        param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
+        p = t->child;
+        count = 0;
+        while (p != NULL)
+        {
+           p->type = new_typevar();
+           sym = p->sym;
+           bind = find_symbol_in_scope(sym);
+           if (bind != NULL)
+               exception("Parameter name already in use\n");
+           bind_symbol(sym, p->type, NULL);
+           param[count] = p->type;
+
+           p = p->next;
+           count++;
+        }
+        sym = sym_lookup("return");
+        bind = find_symbol_in_scope(sym);
+        if (bind != NULL)
+            exception("Use of reserved word \"return\" as a parameter name\n");
+        retty = new_typevar();
+        bind_symbol(sym, retty, NULL);
+        scope_down();
+        
+        /* Add function to global scope */
+        t = a->child;
+        t->type = fn_type(retty, count, param);
+        sym = t->sym;
+        bind_lambda(sym, t->type, a);
+
+        /* process function block */
+        t = t->next->next;
+        current_scope = a->env;
+        t->type = t_nil;
+        t = t->child;
+        while (t != NULL)
+        {
+            annotate_ast(t);
+            t = t->next;
+        }
+        
+        scope_down();
+        a->type = a->child->type;
+        break;
+    case AST_APPL:
+        t = a->child;
+        b = find_symbol(t->sym);
+        if (b != NULL)
+            t->type = b->type;
+        else
+           exception("Unknown function\n");
+        int i = 0;
+        p = t->next;
+        while (p != NULL)
+        {
+            annotate_ast(p);
+            push_type_rel(b->type->param[i], p->type);
+            i++;
+            p = p->next;
+        }
+        a->type = new_typevar();
+        push_type_rel(a->type, b->type->ret);
         break;
     }
 }

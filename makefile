@@ -12,7 +12,7 @@ symbol.o: symbol.h symbol.c
 	g++ -c $(CS_FLAGS) $(CS_INC) symbol.c -o symbol.o
 
 ast.o: ast.h ast.c
-	gcc -c $(CS_FLAGS) $(CS_INC) ast.c -o ast.o
+	g++ -c $(CS_FLAGS) $(CS_INC) ast.c -o ast.o
 
 types.o: types.h types.c
 	gcc -c $(CS_FLAGS) $(CS_INC) types.c -o types.o

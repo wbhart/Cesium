@@ -61,7 +61,7 @@ type_t * typ_to_type(typ_t typ)
    }
 }
 
-type_t * fn_type(type_t * ret, int num, type_t ** param, int variadic)
+type_t * fn_type(type_t * ret, int num, type_t ** param)
 {
    type_t * t = GC_MALLOC(sizeof(type_t));
    t->typ = FN;
@@ -86,6 +86,8 @@ type_t * new_typevar(void)
 
 void print_type(type_t * t)
 {
+    int i;
+    
     if (t == NULL)
     {
         printf("NULL");
@@ -113,7 +115,21 @@ void print_type(type_t * t)
         printf("char");
         break;
     case FN:
-        printf("fn");
+        printf("(");
+        if (t->arity == 0)
+            printf("nil");
+        else
+        {
+            for (i = 0; i < t->arity - 1; i++)
+            {
+                print_type(t->param[i]);
+                printf(", ");
+            }
+            print_type(t->param[i]);
+        }
+        printf(" -> ");
+        print_type(t->ret);
+        printf(")");
         break;
     case TYPEVAR:
         printf("T%ld", t->arity);

@@ -8,6 +8,7 @@
 #include "environment.h"
 #include "backend.h"
 #include "unify.h"
+#include "ast.h"
 #include "gc.h"
 
 #include <llvm-c/Core.h>  
@@ -158,6 +159,7 @@ void print_obj(jit_t * jit, typ_t typ, LLVMValueRef obj)
       case BOOL:
          llvm_printbool(jit, obj);
          break;
+      case FN:
       case NIL:
          llvm_printf(jit, "%s", jit->nil_str);
          break;
@@ -865,6 +867,186 @@ int exec_break(jit_t * jit, ast_t * ast)
 }
 
 /*
+   Jit a return statement
+*/
+int exec_return(jit_t * jit, ast_t * ast)
+{
+    ast_t * exp = ast->child;
+    
+    if (exp)
+    {
+        exec_ast(jit, exp);
+        
+        LLVMBuildRet(jit->builder, exp->val);
+    } else
+        LLVMBuildRetVoid(jit->builder);
+         
+    return 1;
+}
+
+/* fill in all known types from assignment substitutions */
+void fill_in_types(ast_t * ast)
+{
+    if (ast->env != NULL)
+        current_scope = ast->env;
+    
+    subst_type(&ast->type); /* fill in the type */
+    
+    if (ast->tag == AST_IDENT)
+    {
+        bind_t * bind = find_symbol(ast->sym);
+        
+        if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
+            subst_type(&bind->type); /* fill in the type */        
+    }
+    
+    if (ast->child != NULL)
+        fill_in_types(ast->child);
+
+    if (ast->env != NULL)
+        scope_down();
+
+    if (ast->next != NULL)
+        fill_in_types(ast->next);
+}
+
+/*
+   Jit a function declaration
+*/
+int exec_fnparams(jit_t * jit, ast_t * ast)
+{
+    ast_t * p = ast->child;
+    int i = 0;
+
+    while (p != NULL)
+    {
+        bind_t * bind = find_symbol(p->sym);
+        subst_type(&bind->type);
+        p->type = bind->type;
+        
+        LLVMValueRef param = LLVMGetParam(jit->function, i);
+        LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, typ_to_llvm(p->type->typ), p->sym->name);
+        LLVMBuildStore(jit->builder, param, palloca);
+        
+        bind->val = palloca;
+        p->val = palloca;
+        
+        i++;
+        p = p->next;
+    }
+
+    return 0;
+}
+
+/*
+   Jit a function declaration
+*/
+int exec_fndec(jit_t * jit, ast_t * ast)
+{
+    fill_in_types(ast);
+      
+    return 0;
+}
+
+/*
+   Jit a function
+*/
+int exec_fndef(jit_t * jit, ast_t * ast)
+{
+    int params = ast->type->arity;
+    int i;
+    
+    env_t * scope_save = current_scope;
+    current_scope = ast->env;
+        
+    /* get argument types */
+    LLVMTypeRef * args = (LLVMTypeRef *) GC_MALLOC(params*sizeof(LLVMTypeRef));
+    for (i = 0; i < params; i++)
+    {
+        subst_type(&ast->type->param[i]);
+        args[i] = typ_to_llvm(ast->type->param[i]->typ); /* FIXME: write a type_to_llvm */
+    }
+
+    /* get return type */
+    subst_type(&ast->type->ret);
+    LLVMTypeRef ret = typ_to_llvm(ast->type->ret->typ); /* FIXME: write a type_to_llvm */
+    
+    /* make LLVM function type */
+    LLVMTypeRef fn_type = LLVMFunctionType(ret, args, params, 0);
+    
+    /* make llvm function object */
+    char * fn_name = ast->child->sym->name;
+    LLVMValueRef fn_save = jit->function;
+    jit->function = LLVMAddFunction(jit->module, fn_name, fn_type);
+    ast->val = jit->function;
+
+    /* update the function symbol for recursion purposes */
+    bind_t * bind = find_symbol(ast->child->sym);
+    bind->val = jit->function;
+    bind->type = ast->type;
+
+    /* jit function body */
+    LLVMBuilderRef build_save = jit->builder;
+    jit->builder = LLVMCreateBuilder();
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlock(jit->function, "entry");
+    LLVMPositionBuilderAtEnd(jit->builder, entry);
+       
+    exec_fnparams(jit, ast->child->next);
+
+    ast_t * p = ast->child->next->next->child;
+    while (p != NULL)
+    {
+        exec_ast(jit, p);
+        p = p->next;
+    }
+
+    LLVMRunFunctionPassManager(jit->pass, jit->function); 
+    
+    /* clean up */
+    LLVMDisposeBuilder(jit->builder);  
+    jit->builder = build_save;
+    jit->function = fn_save;    
+    current_scope = scope_save;
+
+    return 0;
+}
+
+/*
+   Jit a function application
+*/
+int exec_appl(jit_t * jit, ast_t * ast)
+{
+    ast_t * fn = ast->child;
+    ast_t * p;
+    bind_t * bind = find_symbol(fn->sym);
+    int params, i;
+
+    if (bind->val == NULL) /* function has not been jit'd yet */
+    {
+        exec_fndef(jit, bind->ast);
+        bind->ast = NULL;
+    }
+
+    params = bind->type->arity;
+    LLVMValueRef function = bind->val;
+    LLVMValueRef * args = (LLVMValueRef *) GC_MALLOC(params*sizeof(LLVMValueRef));
+
+    p = fn->next;
+    for (i = 0; i < params; i++)
+    {
+        exec_ast(jit, p);
+        args[i] = p->val;
+        p = p->next;
+    }
+
+    ast->val = LLVMBuildCall(jit->builder, function, args, params, "");
+    ast->type = bind->type->ret; 
+
+    return 0;
+}
+
+/*
    As we traverse the ast we dispatch on ast tag to various jit 
    functions defined above
 */
@@ -966,6 +1148,12 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_while(jit, ast);
     case AST_BREAK:
         return exec_break(jit, ast);
+    case AST_FNDEC:
+        return exec_fndec(jit, ast);
+    case AST_RETURN:
+        return exec_return(jit, ast);
+    case AST_APPL:
+        return exec_appl(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

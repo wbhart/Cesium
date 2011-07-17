@@ -2,6 +2,7 @@
 #define UNIFY_H
 
 #include "types.h"
+#include "ast.h"
 
 #ifdef __cplusplus
  extern "C" {

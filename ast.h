@@ -7,13 +7,13 @@
 #include <llvm-c/Target.h>  
 #include <llvm-c/Transforms/Scalar.h> 
 
-#ifdef __cplusplus
- extern "C" {
-#endif
-
 #include "environment.h"
 #include "symbol.h"
 #include "types.h"
+
+#ifdef __cplusplus
+ extern "C" {
+#endif
 
 typedef enum {
    AST_IDENT, AST_LVALUE, 
@@ -31,7 +31,9 @@ typedef enum {
    AST_ASSIGNMENT, AST_VARASSIGN, 
    AST_IF, AST_IFELSE, AST_WHILE, AST_BREAK,
    AST_BLOCK,
-   AST_FNDEC
+   AST_FNDEC, AST_PARAMS, AST_FNBLOCK, AST_RETURN, 
+   AST_APPL,
+   AST_NIL
 } tag_t;
 
 typedef struct ast_t {
@@ -40,7 +42,7 @@ typedef struct ast_t {
    tag_t tag;
    sym_t * sym;
    type_t * type;
-   env_t * env;
+   struct env_t * env;
    LLVMValueRef val;
 } ast_t;
 

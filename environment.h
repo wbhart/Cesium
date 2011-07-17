@@ -1,8 +1,15 @@
 #ifndef ENVIRONMENT_H
 #define ENVIRONMENT_H
 
+#include <llvm-c/Core.h>  
+#include <llvm-c/Analysis.h>  
+#include <llvm-c/ExecutionEngine.h>  
+#include <llvm-c/Target.h>  
+#include <llvm-c/Transforms/Scalar.h> 
+
 #include "symbol.h"
 #include "types.h"
+#include "ast.h"
 
 #ifdef __cplusplus
  extern "C" {
@@ -10,8 +17,9 @@
 
 typedef struct bind_t
 {
-   sym_t * sym;
+   struct ast_t * ast;
    type_t * type;
+   sym_t * sym;
    LLVMValueRef val;
    struct bind_t * next;
 } bind_t;
@@ -39,6 +47,8 @@ void scope_down(void);
 void scope_print(void);
 
 void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val);
+
+void bind_lambda(sym_t * sym, type_t * type, ast_t * ast);
 
 bind_t * find_symbol(sym_t * sym);
 

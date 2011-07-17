@@ -69,7 +69,7 @@ void ast_init(void)
 
 ast_t * new_ast(void)
 {
-   return GC_MALLOC(sizeof(ast_t));
+   return (ast_t *) GC_MALLOC(sizeof(ast_t));
 }
 
 ast_t * ast_symbol(sym_t * sym, tag_t tag)
@@ -370,6 +370,16 @@ void ast_print(ast_t * a, int indent)
             t = t->next;
         }
         break;
+    case AST_PARAMS:
+        printf("params");
+        printf("\n");
+        t = a->child;
+        while (t != NULL)
+        {
+            ast_print(t, indent + 3);
+            t = t->next;
+        }
+        break;
     case AST_IF:
         printf("if");
         printf("\n");
@@ -384,6 +394,7 @@ void ast_print(ast_t * a, int indent)
         ast_print(a->child->next->next, indent + 3);
         break;
     case AST_BLOCK:
+    case AST_FNBLOCK:
         printf("block");
         printf("\n");
         t = a->child;
@@ -402,5 +413,34 @@ void ast_print(ast_t * a, int indent)
     case AST_BREAK:
         printf("break");
         printf("\n");
+        break;
+    case AST_RETURN:
+        printf("return");
+        printf("\n");
+        t = a->child;
+        if (t != NULL)
+            ast_print(t, indent + 3);
+        break;
+    case AST_FNDEC:
+        printf("fn");
+        ast_print_type(a);
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        ast_print(a->child->next, indent + 3);
+        ast_print(a->child->next->next, indent + 3);
+        printf("\n");
+        break;
+    case AST_APPL:
+        printf("appl");
+        ast_print_type(a);
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        t = a->child->next;
+        while (t != NULL)
+        {
+            ast_print(t, indent + 3);
+            t = t->next;
+        }
+        break;
     }
 }

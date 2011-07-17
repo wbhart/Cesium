@@ -18,11 +18,18 @@
 start         = Spacing r:TopStatement { root = r; } 
                  | ( !EOL .)* EOL { root = NULL; printf("Syntax error\n"); }
 TopStatement  = Symtab ';' { print_sym_tab(); }
+                 | FnDec
                  | VarStmt
                  | Statement
 Statement     = Spacing IfStmt
                  | Spacing WhileStmt
                  | Spacing BlockStmt
+                 | Spacing r:Return ';' { $$ = r; }
+                 | Spacing r:Return e:Expression ';' 
+                 { 
+                    $$ = r;
+                    $$->child = e; 
+                 }
                  | Spacing Break ';' { $$ = ast_stmt0(AST_BREAK); }
                  | Spacing Expression ';'
                  | Spacing ';'
@@ -52,15 +59,18 @@ IfStmt        = ( If LParen e:Expression RParen s1:Statement Spacing Else s2:Sta
                  $$ = ast_stmt2(e, s1, AST_IF); 
               } 
                 )
-BlockStmt     = LBrace { scope_up(); } ( Spacing r:VarStmt | r:Statement )
+Block         = ( Spacing r:VarStmt | r:Statement )
                 ( ( Spacing s:VarStmt | s:Statement )
               {
                   s->next = r;
                   r = s;
               }
-                )* RBrace 
+                )* 
               {  
-                  r = ast_reverse(r);
+                  $$ = ast_reverse(r);
+              }
+BlockStmt     = LBrace { scope_up(); } r:Block RBrace
+              {
                   $$ = ast_unary(r, AST_BLOCK);
                   $$->env = current_scope;
                   scope_down();
@@ -68,6 +78,22 @@ BlockStmt     = LBrace { scope_up(); } ( Spacing r:VarStmt | r:Statement )
 WhileStmt     = While LParen e:Expression RParen s1:Statement
               {
                   $$ = ast_stmt2(e, s1, AST_WHILE);
+              }
+ParamList     = LParen RParen { $$ = ast_stmt0(AST_NIL); }
+              | LParen r:Identifier ( Comma s:Identifier 
+              {
+                  s->next = r;
+                  r = s;
+              }
+                )* RParen
+              {  
+                  $$ = ast_reverse(r);
+              }
+FnDec         = Fn i:Identifier { scope_up(); } p:ParamList  LBrace b:Block RBrace
+              {
+                  $$ = ast_stmt3(i, ast_unary(p, AST_PARAMS), ast_unary(b, AST_FNBLOCK), AST_FNDEC);
+                  $$->env = current_scope;
+                  scope_down();
               }
 
 VarAssign     = Assignment | Identifier
@@ -116,12 +142,29 @@ UnaryExp      = ( Incr s:Identifier { $$ = ast_unary(s, AST_PRE_INC); } )
                  | ( LogNot s:UnaryExp { $$ = ast_unary(s, AST_LOGNOT); } ) 
                  | ( BitNot s:UnaryExp { $$ = ast_unary(s, AST_BITNOT); } ) 
                  | PostfixExp 
+ArgList       = LParen RParen { $$ = NULL; }
+                 | LParen r:Expression ( Comma s:Expression 
+              {
+                  s->next = r;
+                  r = s;
+              }
+                )* RParen
+              { 
+                 $$ = ast_reverse(r);
+              }
 PostfixExp    = ( r:Identifier Incr ) { $$ = ast_unary(r, AST_POST_INC); }
                  | ( r:Identifier Decr ) { $$ = ast_unary(r, AST_POST_DEC); }
+                 | r:Identifier s:ArgList { $$ = ast_stmt2(r, s, AST_APPL); }
                  | Primary 
 Primary       = ( Boolean | Identifier | Double | IntConst | String 
                  | ( LParen Expression RParen ) )
 
+Fn            = 'fn' Spacing
+Return        = < 'return' > Spacing
+              {
+                 sym_t * sym = sym_lookup(yytext);
+                 $$ = ast_symbol(sym, AST_RETURN);
+              }
 Var           = 'var' Spacing
 If            = 'if' Spacing
 Else          = 'else' Spacing

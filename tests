@@ -201,3 +201,21 @@ while (i < 1000) {
 }
 i;
 
+functions:
+==========
+
+fn fac(n) {
+   if (n == 1) return 1;
+   return n*fac(n - 1);
+}
+fac(10);
+fn doit(a, b) {
+   return a + b;
+}
+doit(1, 2);
+fn foo(n) {
+   if (n == 1) return 1;
+   return n*fac(n - 1);
+}
+foo(10);
+
