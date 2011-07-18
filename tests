@@ -219,3 +219,67 @@ fn foo(n) {
 }
 foo(10);
 
+fn b1(n) {
+   if (n == 1) return 1;
+   return n*b1(n-1);
+}
+b1(10);
+
+fn b1(n) {
+   if (n == 1) return 1;
+   return n*b1(n - 1);
+}
+var b2 = b1;
+b2(10);
+b1(10);
+
+fn b1(n) {
+   if (n == 1) return 1;
+   return n*b1(n - 1);
+}
+var b2 = b1;
+var b3 = b2;
+b3(10);
+b2(10);
+b1(10);
+
+fn b1(n) {
+   if (n == 1) return 1;
+   return n*b1(n - 1);
+}
+var b2 = b1;
+b1(10);
+b2(10);
+
+
+fn b1(n) {
+   if (n == 1) return 1;
+   return n*b1(n - 1);
+}
+fn b2(n) {
+   if (n == 1) return 1;
+   return n*b1(n - 1);
+}
+b1(10);
+b2(10);
+
+fn b1(n) {
+   if (n == 1) return 1;
+   return n*b1(n - 1);
+}
+fn b2(n) {
+   if (n == 1) return 1;
+   return n*b1(n - 1);
+}
+b2(10);
+b1(10);
+
+fn f2(f, a) {
+   return f(a);
+}
+fn b1(n) {
+   if (n == 1) return 1;
+   return n*b1(n-1);
+}
+f2(b1, 10);
+

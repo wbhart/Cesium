@@ -126,13 +126,13 @@ void unify(type_rel_t * rels, type_rel_t * ass)
 
 void annotate_ast(ast_t * a)
 {
-    ast_t * t, * p;
+    ast_t * t, *t2, * p;
     bind_t * b;
     type_t * retty;
     type_t ** param;
     bind_t * bind;
     sym_t * sym;
-    int count;
+    int count, i;
 
     switch (a->tag)
     {
@@ -377,17 +377,33 @@ void annotate_ast(ast_t * a)
             t->type = b->type;
         else
            exception("Unknown function\n");
-        int i = 0;
+        count = 0;
+        p = t->next;
+        while (p != NULL) /* count params */
+        {
+            count++;
+            p = p->next;
+        }
+        if (t->type->typ != FN)
+        {
+            param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
+            for (i = 0; i < count; i++)
+                param[i] = new_typevar();
+            type_t * t2 = fn_type(new_typevar(), count, param);
+            push_type_rel(t->type, t2);
+            t->type = t2;
+        }
+        i = 0;
         p = t->next;
         while (p != NULL)
         {
             annotate_ast(p);
-            push_type_rel(b->type->param[i], p->type);
+            push_type_rel(t->type->param[i], p->type);
             i++;
             p = p->next;
         }
         a->type = new_typevar();
-        push_type_rel(a->type, b->type->ret);
+        push_type_rel(a->type, t->type->ret);
         break;
     }
 }
