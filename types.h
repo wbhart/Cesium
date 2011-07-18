@@ -7,7 +7,7 @@
 
 typedef enum
 {
-   NIL, BOOL, INT, DOUBLE, STRING, CHAR, FN, ARRAY, TYPEVAR 
+   NIL, BOOL, INT, DOUBLE, STRING, CHAR, FN, ARRAY, TYPEVAR
 } typ_t;
 
 typedef struct type_t

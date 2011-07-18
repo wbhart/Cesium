@@ -244,24 +244,39 @@ void llvm_cleanup(jit_t * jit)
     jit->false_str = NULL;
 }
 
-/* Convert a typ to an LLVMTypeRef */
-LLVMTypeRef typ_to_llvm(typ_t typ)
+/* Convert a type to an LLVMTypeRef */
+LLVMTypeRef type_to_llvm(type_t * type)
 {
-   switch (typ)
-   {
-      case DOUBLE:
+    int i;
+    
+    if (type == t_double)
          return LLVMDoubleType();
-      case INT:
+    else if (type == t_int)
          return LLVMWordType();
-      case BOOL:
+    else if (type == t_bool)
          return LLVMInt1Type();
-      case STRING:
+    else if (type == t_string)
          return LLVMPointerType(LLVMInt8Type(), 0);
-      case CHAR:
+    else if (type == t_char)
          return LLVMInt8Type();
-      case NIL:
+    else if (type == t_nil)
          return LLVMVoidType();
-   }
+    else if (type->typ == FN)
+    {
+        int params = type->arity;
+        
+        /* get parameter types */
+        LLVMTypeRef * args = (LLVMTypeRef *) GC_MALLOC(params*sizeof(LLVMTypeRef));
+        for (i = 0; i < params; i++)
+            args[i] = type_to_llvm(type->param[i]); 
+
+        /* get return type */
+        LLVMTypeRef ret = type_to_llvm(type->ret); 
+    
+        /* make LLVM function type */
+        return LLVMPointerType(LLVMFunctionType(ret, args, params, 0), 0);
+    } else
+        exception("Unable to infer types\n");
 }
 
 /*
@@ -634,15 +649,24 @@ int exec_binary_pre1(exec_rsheq, LLVMBuildAShr, "rsheq")
 int exec_load(jit_t * jit, ast_t * ast)
 {
     bind_t * bind = find_symbol(ast->sym);
-    
     if (ast->val == NULL)
     {
         ast->type = bind->type;
-        ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
+        if (ast->type->typ != FN || bind->ast == NULL)
+
+            ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
+        else if (bind->val != NULL)
+            ast->val = bind->val;
+        else
+        {
+           exec_fndef(jit, bind->ast);
+           ast->val = bind->val;
+        }
     } else
     {
         subst_type(&ast->type);
-        ast->val = LLVMBuildLoad(jit->builder, ast->val, ast->sym->name);
+        if (ast->type->typ != FN || bind->ast == NULL)
+            ast->val = LLVMBuildLoad(jit->builder, ast->val, ast->sym->name);
     }
     
     return 0;
@@ -654,15 +678,15 @@ int exec_load(jit_t * jit, ast_t * ast)
 int exec_ident(jit_t * jit, ast_t * ast)
 {
     bind_t * bind = find_symbol(ast->sym);
-        
+    
     if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
     {
         subst_type(&bind->type); /* fill in the type */
 
         if (bind->type->typ != TYPEVAR) /* if we now know what it is */
         {
-            LLVMTypeRef type = typ_to_llvm(bind->type->typ);
-                
+            LLVMTypeRef type = type_to_llvm(bind->type);
+            
             if (scope_is_global(bind)) /* variable is global */
             {
                 bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);
@@ -690,7 +714,7 @@ int exec_assignment(jit_t * jit, ast_t * ast)
     exec_ident(jit, id);
     
     LLVMBuildStore(jit->builder, exp->val, id->val);
-
+    
     ast->val = exp->val;
     ast->type = exp->type;
 
@@ -911,7 +935,7 @@ void fill_in_types(ast_t * ast)
 }
 
 /*
-   Jit a function declaration
+   Jit a list of function parameters
 */
 int exec_fnparams(jit_t * jit, ast_t * ast)
 {
@@ -925,7 +949,7 @@ int exec_fnparams(jit_t * jit, ast_t * ast)
         p->type = bind->type;
         
         LLVMValueRef param = LLVMGetParam(jit->function, i);
-        LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, typ_to_llvm(p->type->typ), p->sym->name);
+        LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(p->type), p->sym->name);
         LLVMBuildStore(jit->builder, param, palloca);
         
         bind->val = palloca;
@@ -964,12 +988,12 @@ int exec_fndef(jit_t * jit, ast_t * ast)
     for (i = 0; i < params; i++)
     {
         subst_type(&ast->type->param[i]);
-        args[i] = typ_to_llvm(ast->type->param[i]->typ); /* FIXME: write a type_to_llvm */
+        args[i] = type_to_llvm(ast->type->param[i]); 
     }
 
     /* get return type */
     subst_type(&ast->type->ret);
-    LLVMTypeRef ret = typ_to_llvm(ast->type->ret->typ); /* FIXME: write a type_to_llvm */
+    LLVMTypeRef ret = type_to_llvm(ast->type->ret); 
     
     /* make LLVM function type */
     LLVMTypeRef fn_type = LLVMFunctionType(ret, args, params, 0);
@@ -1019,17 +1043,11 @@ int exec_appl(jit_t * jit, ast_t * ast)
 {
     ast_t * fn = ast->child;
     ast_t * p;
-    bind_t * bind = find_symbol(fn->sym);
+    exec_load(jit, fn);
     int params, i;
 
-    if (bind->val == NULL) /* function has not been jit'd yet */
-    {
-        exec_fndef(jit, bind->ast);
-        bind->ast = NULL;
-    }
-
-    params = bind->type->arity;
-    LLVMValueRef function = bind->val;
+    params = fn->type->arity;
+    
     LLVMValueRef * args = (LLVMValueRef *) GC_MALLOC(params*sizeof(LLVMValueRef));
 
     p = fn->next;
@@ -1039,10 +1057,10 @@ int exec_appl(jit_t * jit, ast_t * ast)
         args[i] = p->val;
         p = p->next;
     }
-
-    ast->val = LLVMBuildCall(jit->builder, function, args, params, "");
-    ast->type = bind->type->ret; 
-
+        
+    ast->val = LLVMBuildCall(jit->builder, fn->val, args, params, "");
+    ast->type = fn->type->ret; 
+        
     return 0;
 }
 
