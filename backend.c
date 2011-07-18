@@ -942,21 +942,24 @@ int exec_fnparams(jit_t * jit, ast_t * ast)
     ast_t * p = ast->child;
     int i = 0;
 
-    while (p != NULL)
+    if (p->tag != AST_NIL)
     {
-        bind_t * bind = find_symbol(p->sym);
-        subst_type(&bind->type);
-        p->type = bind->type;
+        while (p != NULL)
+        {
+            bind_t * bind = find_symbol(p->sym);
+            subst_type(&bind->type);
+            p->type = bind->type;
         
-        LLVMValueRef param = LLVMGetParam(jit->function, i);
-        LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(p->type), p->sym->name);
-        LLVMBuildStore(jit->builder, param, palloca);
+            LLVMValueRef param = LLVMGetParam(jit->function, i);
+            LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(p->type), p->sym->name);
+            LLVMBuildStore(jit->builder, param, palloca);
         
-        bind->val = palloca;
-        p->val = palloca;
+            bind->val = palloca;
+            p->val = palloca;
         
-        i++;
-        p = p->next;
+            i++;
+            p = p->next;
+        }
     }
 
     return 0;
@@ -1049,7 +1052,7 @@ int exec_appl(jit_t * jit, ast_t * ast)
     params = fn->type->arity;
     
     LLVMValueRef * args = (LLVMValueRef *) GC_MALLOC(params*sizeof(LLVMValueRef));
-
+    
     p = fn->next;
     for (i = 0; i < params; i++)
     {

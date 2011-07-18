@@ -283,3 +283,13 @@ fn b1(n) {
 }
 f2(b1, 10);
 
+fn f(n) {
+   if (n == 1) return 1;
+   return n*f(n-1);
+}
+fn b() {
+   return f;
+}
+var f3 = b();
+f3(10);
+

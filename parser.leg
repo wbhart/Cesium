@@ -142,7 +142,7 @@ UnaryExp      = ( Incr s:Identifier { $$ = ast_unary(s, AST_PRE_INC); } )
                  | ( LogNot s:UnaryExp { $$ = ast_unary(s, AST_LOGNOT); } ) 
                  | ( BitNot s:UnaryExp { $$ = ast_unary(s, AST_BITNOT); } ) 
                  | PostfixExp 
-ArgList       = LParen RParen { $$ = NULL; }
+ArgList       = LParen RParen { $$ = ast_stmt0(AST_NIL); }
                  | LParen r:Expression ( Comma s:Expression 
               {
                   s->next = r;

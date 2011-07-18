@@ -13,7 +13,7 @@
  extern "C" {
 #endif
 
-#define TRACE 0 /* prints lots of ast and llvm trace info */
+#define TRACE 1 /* prints lots of ast and llvm trace info */
 
 /* Are we on a 32 or 64 bit machine */
 #if ULONG_MAX == 4294967295U

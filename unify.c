@@ -318,18 +318,21 @@ void annotate_ast(ast_t * a)
         scope_mark();
 
         p = t->child; /* count params */
-        while (p != NULL)
+        if (p->tag != AST_NIL)
         {
-            count++;
-            p = p->next;
+            while (p != NULL)
+            {
+                count++;
+                p = p->next;
+            }
         }
 
         /* inject parameters into scope */
         current_scope = a->env;
         param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
         p = t->child;
-        count = 0;
-        while (p != NULL)
+        i = 0;
+        while (i < count)
         {
            p->type = new_typevar();
            sym = p->sym;
@@ -337,10 +340,10 @@ void annotate_ast(ast_t * a)
            if (bind != NULL)
                exception("Parameter name already in use\n");
            bind_symbol(sym, p->type, NULL);
-           param[count] = p->type;
+           param[i] = p->type;
 
            p = p->next;
-           count++;
+           i++;
         }
         sym = sym_lookup("return");
         bind = find_symbol_in_scope(sym);
@@ -379,10 +382,13 @@ void annotate_ast(ast_t * a)
            exception("Unknown function\n");
         count = 0;
         p = t->next;
-        while (p != NULL) /* count params */
+        if (p->tag != AST_NIL)
         {
-            count++;
-            p = p->next;
+            while (p != NULL) /* count params */
+            {
+                count++;
+                p = p->next;
+            }
         }
         if (t->type->typ != FN)
         {
@@ -395,7 +401,7 @@ void annotate_ast(ast_t * a)
         }
         i = 0;
         p = t->next;
-        while (p != NULL)
+        while (i < count)
         {
             annotate_ast(p);
             push_type_rel(t->type->param[i], p->type);
