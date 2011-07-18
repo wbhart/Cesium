@@ -304,13 +304,13 @@ void annotate_ast(ast_t * a)
         if (b == NULL)
             exception("Returning outside a function\n");
         if (a->child == NULL)
-            a->type = t_nil;
+            push_type_rel(b->type, t_nil);
         else
         {
-           annotate_ast(a->child);
-           push_type_rel(b->type, a->child->type);
-           a->type = t_nil;
+            annotate_ast(a->child);
+            push_type_rel(b->type, a->child->type);
         }
+        a->type = t_nil;
         break;
     case AST_FNDEC:
         count = 0;
