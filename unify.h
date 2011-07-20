@@ -20,6 +20,12 @@ extern type_rel_t * rel_assign;
 
 void rel_stack_init(void);
 
+void rel_assign_init(void);
+
+void rel_assign_mark(void);
+
+void rel_assign_rewind(void);
+
 void push_type_rel(type_t * t1, type_t * t2);
 
 type_rel_t * pop_type_rel(void);

@@ -15,11 +15,28 @@
 
 type_rel_t * rel_stack;
 type_rel_t * rel_assign;
+type_rel_t * rel_assign_save;
 
 void rel_stack_init(void)
 {
-   rel_stack = NULL;
-   rel_assign = NULL;
+    rel_stack = NULL;
+}
+
+void rel_assign_init(void)
+{
+    rel_stack = NULL;
+    rel_assign_save = NULL;
+}
+
+void rel_assign_mark(void)
+{
+    rel_assign_save = rel_assign;
+}
+
+void rel_assign_rewind(void)
+{
+    while (rel_assign != rel_assign_save)
+        rel_assign = rel_assign->next;
 }
 
 void push_type_rel(type_t * t1, type_t * t2)

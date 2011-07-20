@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include "environment.h"
 #include "exception.h"
+#include "unify.h"
 
 jmp_buf exc;
 
 void exception(const char * msg)
 {
    rewind_scope();
+   rel_assign_rewind();
 
    fprintf(stderr, msg);
    
@@ -17,6 +19,7 @@ void jit_exception(jit_t * jit, const char * msg)
 {
    llvm_reset(jit);
    rewind_scope();
+   rel_assign_rewind();
 
    fprintf(stderr, msg);
 

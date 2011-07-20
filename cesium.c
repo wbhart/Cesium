@@ -32,6 +32,7 @@ int main(void) {
     ast_init();
     type_init();
     scope_init();
+    rel_assign_init();
 
     jit_t * jit = llvm_init();
 
@@ -53,6 +54,7 @@ int main(void) {
           } else if (root != NULL)
           {
              rel_stack_init();
+             rel_assign_mark();
              scope_mark();
              annotate_ast(root);
              if (TRACE) 
@@ -61,6 +63,8 @@ int main(void) {
              if (TRACE)
                 print_assigns(rel_assign);
              exec_root(jit, root);
+             if (root->tag != AST_FNDEC)
+                 rel_assign_rewind();
            }
         } else if (jval == 1)
               root = NULL;
