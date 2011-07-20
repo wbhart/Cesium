@@ -298,3 +298,11 @@ fn f(a) {
 }
 f(10);
 
+fn f(a, b) {
+   return a + b;
+}
+fn f2(a) {
+   return f(a, 2);
+}
+f2(10);
+
