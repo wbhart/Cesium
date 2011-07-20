@@ -100,6 +100,8 @@ ast_t * ast_op(tag_t tag);
 
 ast_t * ast_reverse(ast_t * a);
 
+int ast_list_length(ast_t * p);
+
 void ast_print(ast_t * a, int indent);
 
 #ifdef __cplusplus

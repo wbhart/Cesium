@@ -314,106 +314,98 @@ void annotate_ast(ast_t * a)
         a->type = t_nil;
         break;
     case AST_FNDEC:
-        count = 0;
-        t = a->child->next;
+        id = a->child;
+        p = id->next->child; 
+        count = ast_list_length(p); /* count parameters */
         
-        p = t->child; /* count params */
-        if (p->tag != AST_NIL)
-        {
-            while (p != NULL)
-            {
-                count++;
-                p = p->next;
-            }
-        }
-
-        /* inject parameters into scope */
         current_scope = a->env;
+        
+        /* add parameters into scope */
         param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
-        p = t->child;
-        i = 0;
-        while (i < count)
+        for (i = 0; i < count; i++)
         {
-           p->type = new_typevar();
-           sym = p->sym;
-           bind = find_symbol_in_scope(sym);
-           if (bind != NULL)
+           param[i] = p->type = new_typevar(); /* set types */
+           
+           if (find_symbol_in_scope(p->sym)) /* check parameter name */
                exception("Parameter name already in use\n");
-           bind = bind_symbol(sym, p->type, NULL);
-           bind->initialised = 1;
-           param[i] = p->type;
 
+           bind = bind_symbol(p->sym, p->type, NULL); /* bind symbol */
+           bind->initialised = 1;
+           
            p = p->next;
-           i++;
         }
+
+        /* put return into scope */
         sym = sym_lookup("return");
-        bind = find_symbol_in_scope(sym);
-        if (bind != NULL)
+        if (find_symbol_in_scope(sym))
             exception("Use of reserved word \"return\" as a parameter name\n");
         retty = new_typevar();
         bind = bind_symbol(sym, retty, NULL);
+
         scope_down();
         
         /* Add function to global scope */
-        t = a->child;
-        t->type = fn_type(retty, count, param);
-        sym = t->sym;
-        bind = bind_lambda(sym, t->type, a);
+        id->type = fn_type(retty, count, param);
+        bind = bind_lambda(id->sym, id->type, a);
         bind->initialised = 1;
 
-        /* process function block */
-        t = t->next->next;
         current_scope = a->env;
-        t->type = t_nil;
-        t = t->child;
-        while (t != NULL)
+        
+        /* process function body */
+        expr = id->next->next;
+        expr->type = t_nil;
+        expr = expr->child;
+        while (expr != NULL)
         {
-            annotate_ast(t);
-            t = t->next;
+            annotate_ast(expr);
+            expr = expr->next;
         }
         
         scope_down();
-        a->type = a->child->type;
+
+        a->type = id->type;
         break;
     case AST_APPL:
-        t = a->child;
-        b = find_symbol(t->sym);
-        if (b != NULL)
+        id = a->child;
+
+        /* find function and get particulars */
+        bind = find_symbol(id->sym);
+        if (bind != NULL)
         {
-            t->type = b->type;
-            t->bind = b;
+            id->type = bind->type;
+            id->bind = bind;
         } else
            exception("Unknown function\n");
-        count = 0;
-        p = t->next;
-        if (p->tag != AST_NIL)
+
+        /* count arguments */
+        p = id->next;
+        count = ast_list_length(p);
+        
+        /* the function may be passed via a parameter whose type is a typevar */
+        if (id->type->typ != FN) 
         {
-            while (p != NULL) /* count params */
-            {
-                count++;
-                p = p->next;
-            }
-        }
-        if (t->type->typ != FN)
-        {
+            /* build appropriate function type */
             param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
             for (i = 0; i < count; i++)
                 param[i] = new_typevar();
-            type_t * t2 = fn_type(new_typevar(), count, param);
-            push_type_rel(t->type, t2);
-            t->type = t2;
-        }
-        i = 0;
-        p = t->next;
-        while (i < count)
+            type_t * fn_ty = fn_type(new_typevar(), count, param);
+
+            /* use it instead and infer the typevar */
+            push_type_rel(id->type, fn_ty);
+            id->type = fn_ty;
+        } else if (count != id->type->arity) /* check number of parameters */
+            exception("Wrong number of parameters in function\n"); 
+
+        /* get parameter types */
+        for (i = 0; i < count; i++)
         {
             annotate_ast(p);
-            push_type_rel(t->type->param[i], p->type);
-            i++;
+            push_type_rel(id->type->param[i], p->type);
             p = p->next;
         }
-        a->type = new_typevar();
-        push_type_rel(a->type, t->type->ret);
+
+        /* get return types */
+        a->type = id->type->ret;
         break;
     }
 }

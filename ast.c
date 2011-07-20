@@ -151,6 +151,22 @@ ast_t * ast_reverse(ast_t * a)
     return t;
 }
 
+int ast_list_length(ast_t * p)
+{
+    int count = 0;
+    
+    if (p->tag != AST_NIL)
+    {
+        while (p != NULL)
+        {
+            count++;
+            p = p->next;
+        }
+    }
+
+    return count;
+}
+
 void ast_print_op(ast_t * a)
 {
     switch (a->tag)
