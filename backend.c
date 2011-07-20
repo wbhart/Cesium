@@ -928,15 +928,15 @@ int exec_return(jit_t * jit, ast_t * ast)
     return 1;
 }
 
-/* fill in all known types from assignment substitutions */
+/* recursively fill in an ast with inferred types */
 void fill_in_types(ast_t * ast)
 {
     if (ast->env != NULL)
         current_scope = ast->env;
     
-    subst_type(&ast->type); /* fill in the type */
+    subst_type(&ast->type); /* fill in the type at this level*/
     
-    if (ast->tag == AST_IDENT)
+    if (ast->tag == AST_IDENT) /* update identifier binding */
     {
         bind_t * bind = find_symbol(ast->sym);
         
@@ -944,18 +944,18 @@ void fill_in_types(ast_t * ast)
             subst_type(&bind->type); /* fill in the type */        
     }
     
-    if (ast->child != NULL)
+    if (ast->child != NULL) /* depth first */
         fill_in_types(ast->child);
 
     if (ast->env != NULL)
         scope_down();
 
-    if (ast->next != NULL)
+    if (ast->next != NULL) /* then breadth */
         fill_in_types(ast->next);
 }
 
 /*
-   Jit a list of function parameters
+   Jit a list of function parameters making allocas for them
 */
 int exec_fnparams(jit_t * jit, ast_t * ast)
 {
@@ -990,7 +990,7 @@ int exec_fnparams(jit_t * jit, ast_t * ast)
 */
 int exec_fndec(jit_t * jit, ast_t * ast)
 {
-    fill_in_types(ast);
+    fill_in_types(ast); /* just fill in all the types we've inferred */
       
     return 0;
 }
@@ -1000,6 +1000,7 @@ int exec_fndec(jit_t * jit, ast_t * ast)
 */
 int exec_fndef(jit_t * jit, ast_t * ast)
 {
+    ast_t * fn = ast->child;
     int params = ast->type->arity;
     int i;
     
@@ -1022,32 +1023,36 @@ int exec_fndef(jit_t * jit, ast_t * ast)
     LLVMTypeRef fn_type = LLVMFunctionType(ret, args, params, 0);
     
     /* make llvm function object */
-    char * fn_name = ast->child->sym->name;
+    char * fn_name = fn->sym->name;
     LLVMValueRef fn_save = jit->function;
     jit->function = LLVMAddFunction(jit->module, fn_name, fn_type);
     ast->val = jit->function;
 
-    /* update the function symbol for recursion purposes */
-    bind_t * bind = find_symbol(ast->child->sym);
+    /* add the prototype to the symbol binding in case the function calls itself */
+    bind_t * bind = find_symbol(fn->sym);
     bind->val = jit->function;
     bind->type = ast->type;
 
-    /* jit function body */
+    /* jit setup */
     LLVMBuilderRef build_save = jit->builder;
     jit->builder = LLVMCreateBuilder();
 
+    /* first basic block */
     LLVMBasicBlockRef entry = LLVMAppendBasicBlock(jit->function, "entry");
     LLVMPositionBuilderAtEnd(jit->builder, entry);
        
+    /* make allocas for the function parameters */
     exec_fnparams(jit, ast->child->next);
     
-    ast_t * p = ast->child->next->next->child;
+    /* jit the statements in the function body */
+    ast_t * p = fn->next->next->child;
     while (p != NULL)
     {
         exec_ast(jit, p);
         p = p->next;
     }
 
+    /* run the pass manager on the jit'd function */
     LLVMRunFunctionPassManager(jit->pass, jit->function); 
     
     /* clean up */
@@ -1066,13 +1071,15 @@ int exec_appl(jit_t * jit, ast_t * ast)
 {
     ast_t * fn = ast->child;
     ast_t * p;
-    exec_ident(jit, fn);
     int params, i;
 
-    params = fn->type->arity;
+    /* load function */
+    exec_ident(jit, fn);
     
+    params = fn->type->arity;
     LLVMValueRef * args = (LLVMValueRef *) GC_MALLOC(params*sizeof(LLVMValueRef));
     
+    /* jit function arguments */
     p = fn->next;
     for (i = 0; i < params; i++)
     {
@@ -1081,7 +1088,10 @@ int exec_appl(jit_t * jit, ast_t * ast)
         p = p->next;
     }
         
+    /* call function */
     ast->val = LLVMBuildCall(jit->builder, fn->val, args, params, "");
+    
+    /* update return type */
     ast->type = fn->type->ret; 
         
     return 0;
