@@ -284,6 +284,7 @@ void ast_print(ast_t * a, int indent)
 
     switch (a->tag)
     {
+    case AST_LVALUE:
     case AST_IDENT:
         printf("ident(%s)", a->sym->name);
         ast_print_type(a);

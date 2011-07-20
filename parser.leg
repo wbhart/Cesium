@@ -99,6 +99,7 @@ FnDec         = Fn i:Identifier { scope_up(); } p:ParamList  LBrace b:Block RBra
 VarAssign     = Assignment | Identifier
 Assignment    = r:Identifier Equals s:AssignExp
               {
+                 r->tag = AST_LVALUE;
                  r->next = s;
                  $$ = ast_unary(r, AST_ASSIGNMENT);
               }

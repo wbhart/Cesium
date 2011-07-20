@@ -21,6 +21,7 @@ typedef struct bind_t
    type_t * type;
    sym_t * sym;
    LLVMValueRef val;
+   int initialised;
    struct bind_t * next;
 } bind_t;
 
@@ -46,9 +47,9 @@ void scope_down(void);
 
 void scope_print(void);
 
-void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val);
+bind_t * bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val);
 
-void bind_lambda(sym_t * sym, type_t * type, ast_t * ast);
+bind_t * bind_lambda(sym_t * sym, type_t * type, ast_t * ast);
 
 bind_t * find_symbol(sym_t * sym);
 

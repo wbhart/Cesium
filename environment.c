@@ -59,11 +59,13 @@ void rewind_scope()
     {
         while (current_scope->next != NULL)
             scope_down();
-        scope_ptr = NULL;
     }
-    else
+    if (scope_is_global(scope_ptr))
+    {
         while (current_scope->scope != scope_ptr)
             current_scope->scope = current_scope->scope->next;
+    } else
+        scope_ptr = NULL;
 }
 
 void scope_print(void)
@@ -86,7 +88,7 @@ void scope_print(void)
   }
 }
 
-void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val)
+bind_t * bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val)
 {
    bind_t * scope = current_scope->scope;
    bind_t * b = (bind_t *) GC_MALLOC(sizeof(bind_t));
@@ -95,9 +97,10 @@ void bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val)
    b->val = val;
    b->next = scope;
    current_scope->scope = b;
+   return b;
 }
 
-void bind_lambda(sym_t * sym, type_t * type, ast_t * ast)
+bind_t * bind_lambda(sym_t * sym, type_t * type, ast_t * ast)
 {
    bind_t * scope = current_scope->scope;
    bind_t * b = (bind_t *) GC_MALLOC(sizeof(bind_t));
@@ -106,7 +109,7 @@ void bind_lambda(sym_t * sym, type_t * type, ast_t * ast)
    b->ast = ast;
    b->next = scope;
    current_scope->scope = b;
-
+   return b;
 }
 
 bind_t * find_symbol(sym_t * sym)

@@ -34,33 +34,6 @@ int type_equal(type_t * t1, type_t * t2)
    return 0;
 }
 
-type_t * typ_to_type(typ_t typ)
-{
-   switch (typ)
-   {
-   case NIL:
-      return t_nil;
-      break;
-   case BOOL:
-      return t_bool;
-      break;
-   case INT:
-      return t_int;
-      break;
-   case DOUBLE:
-      return t_double;
-      break;
-   case STRING:
-      return t_string;
-      break;
-   case CHAR:
-      return t_char;
-      break;
-   default:
-      return NULL;
-   }
-}
-
 type_t * fn_type(type_t * ret, int num, type_t ** param)
 {
    type_t * t = GC_MALLOC(sizeof(type_t));

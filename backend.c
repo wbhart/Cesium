@@ -245,7 +245,7 @@ void llvm_cleanup(jit_t * jit)
 }
 
 /* Convert a type to an LLVMTypeRef */
-LLVMTypeRef type_to_llvm(type_t * type)
+LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type)
 {
     int i;
     
@@ -268,15 +268,17 @@ LLVMTypeRef type_to_llvm(type_t * type)
         /* get parameter types */
         LLVMTypeRef * args = (LLVMTypeRef *) GC_MALLOC(params*sizeof(LLVMTypeRef));
         for (i = 0; i < params; i++)
-            args[i] = type_to_llvm(type->param[i]); 
+            args[i] = type_to_llvm(jit, type->param[i]); 
 
         /* get return type */
-        LLVMTypeRef ret = type_to_llvm(type->ret); 
+        LLVMTypeRef ret = type_to_llvm(jit, type->ret); 
     
         /* make LLVM function type */
         return LLVMPointerType(LLVMFunctionType(ret, args, params, 0), 0);
-    } else
-        exception("Unable to infer types\n");
+    } else if (type->typ == TYPEVAR)
+        jit_exception(jit, "Unable to infer types\n");
+    else
+        jit_exception(jit, "Internal error: unknown type in type_to_llvm\n");
 }
 
 /*
@@ -424,7 +426,7 @@ __name(jit_t * jit, ast_t * ast)                                \
 {                                                               \
     ast_t * expr1 = ast->child;                                 \
                                                                 \
-    exec_ident(jit, expr1);                                     \
+    exec_place(jit, expr1);                                     \
                                                                 \
     LLVMValueRef v1 = LLVMBuildLoad(jit->builder,               \
                       expr1->val, expr1->sym->name);            \
@@ -447,7 +449,7 @@ __name(jit_t * jit, ast_t * ast)                                 \
 {                                                                \
     ast_t * expr1 = ast->child;                                  \
                                                                  \
-    exec_ident(jit, expr1);                                      \
+    exec_place(jit, expr1);                                      \
                                                                  \
     LLVMValueRef v1 = LLVMBuildLoad(jit->builder,                \
                       expr1->val, expr1->sym->name);             \
@@ -549,7 +551,7 @@ __name(jit_t * jit, ast_t * ast)                              \
     ast_t * expr1 = ast->child;                               \
     ast_t * expr2 = ast->child->next;                         \
                                                               \
-    exec_ident(jit, expr1);                                   \
+    exec_place(jit, expr1);                                   \
     exec_ast(jit, expr2);                                     \
                                                               \
     LLVMValueRef v1 = LLVMBuildLoad(jit->builder,             \
@@ -572,7 +574,7 @@ __name(jit_t * jit, ast_t * ast)                              \
     ast_t * expr1 = ast->child;                               \
     ast_t * expr2 = ast->child->next;                         \
                                                               \
-    exec_ident(jit, expr1);                                   \
+    exec_place(jit, expr1);                                   \
     exec_ast(jit, expr2);                                     \
                                                               \
     LLVMValueRef v1 = LLVMBuildLoad(jit->builder,             \
@@ -644,61 +646,77 @@ int exec_binary_pre1(exec_lsheq, LLVMBuildShl, "lsheq")
 int exec_binary_pre1(exec_rsheq, LLVMBuildAShr, "rsheq")
 
 /*
-   Load an identifier
+   Load value of identifier
 */
-int exec_load(jit_t * jit, ast_t * ast)
+int exec_ident(jit_t * jit, ast_t * ast)
 {
-    bind_t * bind = find_symbol(ast->sym);
-    if (ast->val == NULL)
-    {
-        ast->type = bind->type;
-        if (ast->type->typ != FN || bind->ast == NULL)
+    bind_t * bind = ast->bind;
 
-            ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
-        else if (bind->val != NULL)
-            ast->val = bind->val;
-        else
-        {
-           exec_fndef(jit, bind->ast);
-           ast->val = bind->val;
-        }
-    } else
+    if (bind->val != NULL) /* we've already got a value and thus a type */
+         ast->type = bind->type;
+    else /* substitute the inferred type and update the binding type */
     {
         subst_type(&ast->type);
-        if (ast->type->typ != FN || bind->ast == NULL)
-            ast->val = LLVMBuildLoad(jit->builder, ast->val, ast->sym->name);
+        bind->type = ast->type;
+    }
+    
+    /* if it's not an LLVM function just load the value */
+    if (ast->type->typ != FN || bind->ast == NULL)
+        ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
+    else if (bind->val != NULL) /* if the function has been jit'd, load that */
+        ast->val = bind->val;
+    else /* jit the function (which updates the binding) and load that */
+    {
+         exec_fndef(jit, bind->ast);
+         ast->val = bind->val;
     }
     
     return 0;
 }
 
 /*
-   Find an identifier
+   Jit a variable declaration
 */
-int exec_ident(jit_t * jit, ast_t * ast)
+int exec_decl(jit_t * jit, ast_t * ast)
 {
-    bind_t * bind = find_symbol(ast->sym);
+    bind_t * bind = ast->bind;
     
-    if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
+    subst_type(&bind->type); /* fill in the type */
+    
+    if (bind->type->typ != TYPEVAR) /* if we now know what it is */
     {
-        subst_type(&bind->type); /* fill in the type */
-
-        if (bind->type->typ != TYPEVAR) /* if we now know what it is */
-        {
-            LLVMTypeRef type = type_to_llvm(bind->type);
+        LLVMTypeRef type = type_to_llvm(jit, bind->type); /* convert to llvm type */
             
-            if (scope_is_global(bind)) /* variable is global */
-            {
-                bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);
-                LLVMSetInitializer(bind->val, LLVMGetUndef(type));
-            } else
-                bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
-        }   
+        if (scope_is_global(bind)) /* variable is global */
+        {
+            bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);
+            LLVMSetInitializer(bind->val, LLVMGetUndef(type));
+        } else /* variable is global */
+            bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
     }
-        
+
     ast->type = bind->type;
     ast->val = bind->val;
    
+    return 0;
+}
+
+/*
+   Find identifier binding and load the place corresponding to it (lvalue)
+*/
+int exec_place(jit_t * jit, ast_t * ast)
+{
+    if (ast->val == NULL) /* we haven't already loaded it */
+    {
+        bind_t * bind = ast->bind;
+
+        if (bind->val == NULL) /* we still haven't jit'd it */
+            exec_decl(jit, ast);
+
+        ast->type = bind->type; /* load particulars from binding */
+        ast->val = bind->val;
+    }
+
     return 0;
 }
 
@@ -708,15 +726,17 @@ int exec_ident(jit_t * jit, ast_t * ast)
 int exec_assignment(jit_t * jit, ast_t * ast)
 {
     ast_t * id = ast->child;
-    ast_t * exp = ast->child->next;
+    ast_t * expr = ast->child->next;
     
-    exec_ast(jit, exp);
-    exec_ident(jit, id);
+    exec_ast(jit, expr);
+    exec_place(jit, id);
     
-    LLVMBuildStore(jit->builder, exp->val, id->val);
+    LLVMBuildStore(jit->builder, expr->val, id->val);
     
-    ast->val = exp->val;
-    ast->type = exp->type;
+    ast->val = expr->val;
+    ast->type = expr->type;
+
+    id->bind->initialised = 1; /* mark it as initialised */
 
     return 0;
 }
@@ -726,16 +746,16 @@ int exec_assignment(jit_t * jit, ast_t * ast)
 */
 int exec_varassign(jit_t * jit, ast_t * ast)
 {
-    ast_t * c = ast->child;
+    ast_t * p = ast->child;
 
-    while (c != NULL)
+    while (p != NULL)
     {
-        if (c->tag == AST_IDENT)
-            exec_ident(jit, c);
+        if (p->tag == AST_IDENT)
+            exec_decl(jit, p);
         else /* AST_ASSIGNMENT */
-            exec_assignment(jit, c);
+            exec_assignment(jit, p); /* combined declaration and assignment */
                     
-        c = c->next;
+        p = p->next;
     }
 
     ast->type = t_nil;
@@ -951,7 +971,7 @@ int exec_fnparams(jit_t * jit, ast_t * ast)
             p->type = bind->type;
         
             LLVMValueRef param = LLVMGetParam(jit->function, i);
-            LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(p->type), p->sym->name);
+            LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(jit, p->type), p->sym->name);
             LLVMBuildStore(jit->builder, param, palloca);
         
             bind->val = palloca;
@@ -985,18 +1005,18 @@ int exec_fndef(jit_t * jit, ast_t * ast)
     
     env_t * scope_save = current_scope;
     current_scope = ast->env;
-        
+      
     /* get argument types */
     LLVMTypeRef * args = (LLVMTypeRef *) GC_MALLOC(params*sizeof(LLVMTypeRef));
     for (i = 0; i < params; i++)
     {
         subst_type(&ast->type->param[i]);
-        args[i] = type_to_llvm(ast->type->param[i]); 
+        args[i] = type_to_llvm(jit, ast->type->param[i]); 
     }
 
     /* get return type */
     subst_type(&ast->type->ret);
-    LLVMTypeRef ret = type_to_llvm(ast->type->ret); 
+    LLVMTypeRef ret = type_to_llvm(jit, ast->type->ret); 
     
     /* make LLVM function type */
     LLVMTypeRef fn_type = LLVMFunctionType(ret, args, params, 0);
@@ -1020,7 +1040,7 @@ int exec_fndef(jit_t * jit, ast_t * ast)
     LLVMPositionBuilderAtEnd(jit->builder, entry);
        
     exec_fnparams(jit, ast->child->next);
-
+    
     ast_t * p = ast->child->next->next->child;
     while (p != NULL)
     {
@@ -1046,7 +1066,7 @@ int exec_appl(jit_t * jit, ast_t * ast)
 {
     ast_t * fn = ast->child;
     ast_t * p;
-    exec_load(jit, fn);
+    exec_ident(jit, fn);
     int params, i;
 
     params = fn->type->arity;
@@ -1108,7 +1128,7 @@ int exec_ast(jit_t * jit, ast_t * ast)
     case AST_ASSIGNMENT:
         return exec_assignment(jit, ast);
     case AST_IDENT:
-        return exec_load(jit, ast);
+        return exec_ident(jit, ast);
     case AST_LE:
         return exec_le(jit, ast);
     case AST_GE:

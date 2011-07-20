@@ -16,7 +16,7 @@
 #endif
 
 typedef enum {
-   AST_IDENT, AST_LVALUE, 
+   AST_IDENT, AST_LVALUE,
    AST_DOUBLE, AST_INT, AST_BOOL, AST_STRING,
    AST_PLUS, AST_MINUS, AST_TIMES, AST_DIV, AST_MOD,
    AST_LSH, AST_RSH, 
@@ -42,6 +42,7 @@ typedef struct ast_t {
    tag_t tag;
    sym_t * sym;
    type_t * type;
+   struct bind_t * bind;
    struct env_t * env;
    LLVMValueRef val;
 } ast_t;

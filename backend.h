@@ -13,7 +13,7 @@
  extern "C" {
 #endif
 
-#define TRACE 0 /* prints lots of ast and llvm trace info */
+#define TRACE 1 /* prints lots of ast and llvm trace info */
 
 /* Are we on a 32 or 64 bit machine */
 #if ULONG_MAX == 4294967295U
@@ -42,7 +42,7 @@ void llvm_reset(jit_t * jit);
 
 void llvm_cleanup(jit_t * jit);
 
-int exec_load(jit_t * jit, ast_t * ast);
+int exec_place(jit_t * jit, ast_t * ast);
 
 int exec_ident(jit_t * jit, ast_t * ast);
 

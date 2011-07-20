@@ -124,9 +124,17 @@ void unify(type_rel_t * rels, type_rel_t * ass)
     }
 }
 
+/* 
+   Go through each node of the AST and do the following things:
+   1) Generate type variables for each node where the type is not known
+   2) Push relations onto the stack of type relations that get passed to unify
+   3) Add a type to the ast node corresponding to either the known type of the
+      node or the generated type variable for the node
+   4) Bind symbols and set ast->bind to the correct binding
+*/
 void annotate_ast(ast_t * a)
 {
-    ast_t * t, *t2, * p;
+    ast_t * t, * t2, * p, * id, * expr;
     bind_t * b;
     type_t * retty;
     type_t ** param;
@@ -138,26 +146,19 @@ void annotate_ast(ast_t * a)
     {
     case AST_IDENT:
         b = find_symbol(a->sym);
-        if (b != NULL && b->type != t_nil)
+        if (b != NULL && b->initialised) /* ensure initialised and exists */
         {
             a->type = b->type;
-            a->val = b->val;
+            a->bind = b; /* make sure we use the right binding */
         } else
            exception("Unbound symbol\n");
         break;
     case AST_LVALUE:
-        a->tag = AST_IDENT;
         b = find_symbol(a->sym);
-        if (b != NULL)
+        if (b != NULL) /* ensure it exists */
         {
-             if (b->type == t_nil)
-             {
-                 a->type = new_typevar();
-                 b->type = a->type;
-             }
-             else
-                 a->type = b->type;
-             a->val = b->val;
+            a->type = b->type;
+            a->bind = b; /* make sure we use the right binding */
         } else
            exception("Unbound symbol\n");
         break;
@@ -193,7 +194,6 @@ void annotate_ast(ast_t * a)
     case AST_BITOR:
     case AST_BITAND:
     case AST_BITXOR:
-    case AST_ASSIGNMENT:
     case AST_LOGAND:
     case AST_LOGOR:
     case AST_PLUSEQ:
@@ -207,11 +207,17 @@ void annotate_ast(ast_t * a)
     case AST_LSHEQ:
     case AST_RSHEQ:
         annotate_ast(a->child->next);
-        if (a->tag == AST_ASSIGNMENT)
-            a->child->tag = AST_LVALUE;
         annotate_ast(a->child);
         a->type = a->child->type;
         push_type_rel(a->type, a->child->next->type);
+        break;
+    case AST_ASSIGNMENT:
+        id = a->child;
+        expr = id->next;
+        annotate_ast(expr);
+        annotate_ast(id);
+        a->type = expr->type;
+        push_type_rel(id->type, expr->type);
         break;
     case AST_LT:
     case AST_GT:
@@ -225,49 +231,44 @@ void annotate_ast(ast_t * a)
         push_type_rel(a->child->type, a->child->next->type);
         break;
     case AST_VARASSIGN:
-        t = a->child;
+        p = a->child;
         scope_mark();
-        while (t != NULL)
+        while (p != NULL)
         {
-            bind_t * bind;
-            sym_t * sym;
-            if (t->tag == AST_ASSIGNMENT)
+            if (p->tag == AST_ASSIGNMENT)
             {
-                annotate_ast(t->child->next);
-                t->type = new_typevar();
-                t->child->type = t->type;
-                sym = t->child->sym;
+                id = p->child;
+                expr = id->next;
+            } else /* AST_IDENT */
+                id = p;
+            
+            id->type = new_typevar(); /* type is to be inferred */            
+            
+            /* check we're not redefining a local symbol in the current scope */
+            bind = find_symbol_in_scope(id->sym);
+            if (bind != NULL && !scope_is_global(bind))
+                exception("Attempt to redefine local symbol\n");
+              
+            if (p->tag == AST_ASSIGNMENT)
+               annotate_ast(expr); /* get expr before anything is redefined */
+            
+            /* make new binding in the current scope*/
+            bind = bind_symbol(id->sym, id->type, NULL);
+            
+            /* check if it is a combined variable declaration and assignment */
+            if (p->tag == AST_ASSIGNMENT)
+            {
+                bind->initialised = 1; /* mark it initialised */
+                annotate_ast(id);
+                p->type = expr->type;
+                push_type_rel(id->type, expr->type);
             } else
             {
-                sym = t->sym;
-                t->type = t_nil;
+                bind->initialised = 0; /* mark it uninitialised */
+                p->bind = bind;
             }
-            
-            bind = find_symbol_in_scope(sym);
-            if (bind != NULL)
-            {
-                if (!scope_is_global(bind))
-                    exception("Attempt to redefine local symbol\n");
 
-                ast_t * s = a->child;
-                sym_t * sym2;
-                while (s != t)
-                {
-                    if (s->tag == AST_ASSIGNMENT)
-                        sym2 = s->child->sym;
-                    else
-                        sym2 = s->sym;
-                    if (sym == sym2)
-                        exception("Immediate redefinition of symbol\n");
-                    s = s->next;
-                }
-            }
-                
-            bind_symbol(sym, t->type, NULL);
-            if (t->tag == AST_ASSIGNMENT)
-                push_type_rel(t->type, t->child->next->type);
-            
-            t = t->next;
+            p = p->next;
         }
         a->type = t_nil;
         break;
@@ -315,8 +316,7 @@ void annotate_ast(ast_t * a)
     case AST_FNDEC:
         count = 0;
         t = a->child->next;
-        scope_mark();
-
+        
         p = t->child; /* count params */
         if (p->tag != AST_NIL)
         {
@@ -339,7 +339,8 @@ void annotate_ast(ast_t * a)
            bind = find_symbol_in_scope(sym);
            if (bind != NULL)
                exception("Parameter name already in use\n");
-           bind_symbol(sym, p->type, NULL);
+           bind = bind_symbol(sym, p->type, NULL);
+           bind->initialised = 1;
            param[i] = p->type;
 
            p = p->next;
@@ -350,14 +351,15 @@ void annotate_ast(ast_t * a)
         if (bind != NULL)
             exception("Use of reserved word \"return\" as a parameter name\n");
         retty = new_typevar();
-        bind_symbol(sym, retty, NULL);
+        bind = bind_symbol(sym, retty, NULL);
         scope_down();
         
         /* Add function to global scope */
         t = a->child;
         t->type = fn_type(retty, count, param);
         sym = t->sym;
-        bind_lambda(sym, t->type, a);
+        bind = bind_lambda(sym, t->type, a);
+        bind->initialised = 1;
 
         /* process function block */
         t = t->next->next;
@@ -377,8 +379,10 @@ void annotate_ast(ast_t * a)
         t = a->child;
         b = find_symbol(t->sym);
         if (b != NULL)
+        {
             t->type = b->type;
-        else
+            t->bind = b;
+        } else
            exception("Unknown function\n");
         count = 0;
         p = t->next;

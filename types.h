@@ -7,7 +7,7 @@
 
 typedef enum
 {
-   NIL, BOOL, INT, DOUBLE, STRING, CHAR, FN, ARRAY, TYPEVAR
+   NIL, UNKNOWN, BOOL, INT, DOUBLE, STRING, CHAR, FN, ARRAY, TYPEVAR
 } typ_t;
 
 typedef struct type_t
@@ -30,8 +30,6 @@ void type_init(void);
 type_t * new_type(typ_t typ);
 
 int type_equal(type_t * t1, type_t * t2);
-
-type_t * typ_to_type(typ_t);
 
 type_t * fn_type(type_t * ret, int num, type_t ** param);
 
