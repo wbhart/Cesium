@@ -194,12 +194,30 @@ jit_t * llvm_init(void)
     /* Create optimisation pass pipeline */
     jit->pass = LLVMCreateFunctionPassManagerForModule(jit->module);  
     LLVMAddTargetData(LLVMGetExecutionEngineTargetData(jit->engine), jit->pass);  
+    LLVMAddAggressiveDCEPass(jit->pass); /* */
+    LLVMAddDeadStoreEliminationPass(jit->pass); 
+    LLVMAddIndVarSimplifyPass(jit->pass); 
+    LLVMAddJumpThreadingPass(jit->pass); 
+    LLVMAddLICMPass(jit->pass); 
+    LLVMAddLoopDeletionPass(jit->pass); 
+    LLVMAddLoopIdiomPass(jit->pass); 
+    LLVMAddLoopRotatePass(jit->pass); 
+    LLVMAddLoopUnrollPass(jit->pass); 
+    LLVMAddLoopUnswitchPass(jit->pass);
+    LLVMAddMemCpyOptPass(jit->pass); 
+    LLVMAddReassociatePass(jit->pass); 
+    LLVMAddSCCPPass(jit->pass); 
+    LLVMAddScalarReplAggregatesPass(jit->pass); 
+    LLVMAddScalarReplAggregatesPassSSA(jit->pass); 
+    LLVMAddSimplifyLibCallsPass(jit->pass);
+    LLVMAddTailCallEliminationPass(jit->pass); 
+    LLVMAddDemoteMemoryToRegisterPass(jit->pass); /* */ 
     LLVMAddConstantPropagationPass(jit->pass);  
     LLVMAddInstructionCombiningPass(jit->pass);  
     LLVMAddPromoteMemoryToRegisterPass(jit->pass);  
     LLVMAddGVNPass(jit->pass);  
     LLVMAddCFGSimplificationPass(jit->pass);
-
+    
     /* link in external functions callable from jit'd code */
     llvm_functions(jit);
 
