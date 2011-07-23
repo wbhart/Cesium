@@ -306,3 +306,21 @@ fn f2(a) {
 }
 f2(10);
 
+Closures:
+=========
+
+fn b() {
+   return lambda(n) { n + 1 };
+}
+fn b2(f, a) {
+   var add1 = f();
+   return add1(a);
+}
+b2(b, 10);
+
+fn b() {
+   return lambda(n) { n+1 };
+}
+var add1 = b();
+add1(10);
+

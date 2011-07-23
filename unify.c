@@ -328,7 +328,10 @@ void annotate_ast(ast_t * a)
         else
         {
             annotate_ast(a->child);
-            push_type_rel(b->type, a->child->type);
+            if (a->child->type->typ == FN) /* need to make return type a lambda */
+                push_type_rel(b->type, fn_to_lambda_type(a->child->type));
+            else
+                push_type_rel(b->type, a->child->type);
         }
         a->type = t_nil;
         break;
@@ -480,7 +483,10 @@ void annotate_ast(ast_t * a)
         for (i = 0; i < count; i++)
         {
             annotate_ast(p);
-            push_type_rel(id->type->param[i], p->type);
+            if (p->type->typ == FN) /* need to make type a lambda */
+                push_type_rel(id->type->param[i], fn_to_lambda_type(p->type));
+            else
+                push_type_rel(id->type->param[i], p->type);
             p = p->next;
         }
 

@@ -1042,13 +1042,34 @@ int exec_break(jit_t * jit, ast_t * ast)
 */
 int exec_return(jit_t * jit, ast_t * ast)
 {
-    ast_t * exp = ast->child;
+    ast_t * p = ast->child;
     
-    if (exp)
+    if (p)
     {
-        exec_ast(jit, exp);
+        exec_ast(jit, p);
+        if (p->type->typ == FN) /* convert to lambda */
+        {
+            /* malloc space for lambda struct */
+            LLVMTypeRef str_ty = lambda_type(jit, p->type);
+            LLVMValueRef str = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+            
+            /* set function entry */
+            LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+            LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
+            p->val = make_fn_lambda(jit, fn_entry, p->val, lambda_fn_type(jit, p->type));
+            LLVMBuildStore(jit->builder, p->val, fn_entry);
         
-        LLVMBuildRet(jit->builder, exp->val);
+            /* set environment entry to NULL */
+            LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
+            LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
+            LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
+            p->val = str;
+
+            /* set lambda type */
+            p->type->typ = LAMBDA;
+        }
+        
+        LLVMBuildRet(jit->builder, p->val);
         
     } else
         LLVMBuildRetVoid(jit->builder);
