@@ -412,6 +412,7 @@ void ast_print(ast_t * a, int indent)
         break;
     case AST_BLOCK:
     case AST_FNBLOCK:
+    case AST_EXPRBLOCK:
         printf("block");
         printf("\n");
         t = a->child;
@@ -445,6 +446,14 @@ void ast_print(ast_t * a, int indent)
         ast_print(a->child, indent + 3);
         ast_print(a->child->next, indent + 3);
         ast_print(a->child->next->next, indent + 3);
+        printf("\n");
+        break;
+    case AST_LAMBDA:
+        printf("lambda");
+        ast_print_type(a);
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        ast_print(a->child->next, indent + 3);
         printf("\n");
         break;
     case AST_APPL:

@@ -50,6 +50,8 @@ int exec_ident(jit_t * jit, ast_t * ast);
 
 int exec_fndef(jit_t * jit, ast_t * ast);
 
+int exec_lambda(jit_t * jit, ast_t * ast);
+
 int exec_ast(jit_t * jit, ast_t * ast);
 
 void exec_root(jit_t * jit, ast_t * ast);

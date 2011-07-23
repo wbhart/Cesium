@@ -33,6 +33,7 @@ typedef enum {
    AST_BLOCK,
    AST_FNDEC, AST_PARAMS, AST_FNBLOCK, AST_RETURN, 
    AST_APPL,
+   AST_LAMBDA, AST_EXPRBLOCK,
    AST_NIL
 } tag_t;
 

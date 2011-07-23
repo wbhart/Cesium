@@ -72,7 +72,7 @@ void type_subst_type(type_t ** tin, type_rel_t * rel)
         if (*tin == rel->t1)
             *tin = rel->t2;
     }
-    else if (t->typ == FN)
+    else if (t->typ == FN || t->typ == LAMBDA)
     {
         for (i = 0; i < t->arity; i++)
             type_subst_type(t->param + i, rel);
@@ -233,6 +233,8 @@ void annotate_ast(ast_t * a)
         expr = id->next;
         annotate_ast(expr);
         annotate_ast(id);
+        if (id->type->typ == FN)
+            exception("Attempt to assign to function\n");
         a->type = expr->type;
         push_type_rel(id->type, expr->type);
         break;
@@ -381,6 +383,66 @@ void annotate_ast(ast_t * a)
         scope_down();
 
         a->type = id->type;
+        break;
+    case AST_LAMBDA:
+        p = a->child->child; 
+        count = ast_list_length(p); /* count parameters */
+        
+        current_scope = a->env;
+        
+        /* add parameters into scope */
+        param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
+        for (i = 0; i < count; i++)
+        {
+           param[i] = p->type = new_typevar(); /* set types */
+           
+           if (find_symbol_in_scope(p->sym)) /* check parameter name */
+               exception("Parameter name already in use\n");
+
+           bind = bind_symbol(p->sym, p->type, NULL); /* bind symbol */
+           bind->initialised = 1;
+           
+           p = p->next;
+        }
+
+        /* put return into scope */
+        sym = sym_lookup("return");
+        if (find_symbol_in_scope(sym))
+            exception("Use of reserved word \"return\" as a parameter name\n");
+        retty = new_typevar();
+        bind = bind_symbol(sym, retty, NULL);
+
+        scope_down();
+        
+        /* Add function to global scope */
+        a->type = fn_type(retty, count, param);
+        a->type->typ = LAMBDA;
+        sym = sym_lookup("lambda");
+        b = bind_lambda(sym, a->type, a);
+        b->initialised = 1;
+
+        current_scope = a->env;
+        
+        /* process function body */
+        t = a->child->next;
+        if (t->tag == AST_EXPRBLOCK)
+        {
+            expr = t->child;
+            while (expr->next != NULL)
+            {
+                annotate_ast(expr);
+                expr = expr->next;
+            }
+            annotate_ast(expr);
+        } else
+        {
+            expr = t;
+            annotate_ast(expr);
+        }
+        t->type = expr->type;
+        push_type_rel(bind->type, t->type);
+        
+        scope_down();
         break;
     case AST_APPL:
         id = a->child;

@@ -754,7 +754,7 @@ int exec_ident(jit_t * jit, ast_t * ast)
         ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
     else if (bind->val != NULL) /* if the function has been jit'd, load that */
         ast->val = bind->val;
-    else /* jit the function (which updates the binding) and load that */
+    else if (ast->type->typ == FN || ast->type->typ == LAMBDA)/* jit the fn, update the binding and load it */
     {
          exec_fndef(jit, bind->ast);
          ast->val = bind->val;
@@ -804,20 +804,8 @@ int exec_place(jit_t * jit, ast_t * ast)
         if (bind->type->typ == FN) /* prepare for lambda */
             bind->type = fn_to_lambda_type(bind->type);
 
-        if (bind->val == NULL) /* we still haven't jit'd it */
-        {    
+        if (bind->val == NULL) /* we still haven't jit'd it */  
             exec_decl(jit, ast);
-
-            if (bind->type->typ == LAMBDA)
-            {
-                /* malloc space for lambda struct */
-                LLVMTypeRef str_ty = lambda_type(jit, bind->type);
-                LLVMValueRef s = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
-            
-                /* place allocated struct into struct pointer */
-                LLVMBuildStore(jit->builder, s, bind->val);
-            }
-        }
 
         ast->type = bind->type; /* load particulars from binding */
         ast->val = bind->val;
@@ -833,13 +821,29 @@ int exec_assignment(jit_t * jit, ast_t * ast)
 {
     ast_t * id = ast->child;
     ast_t * expr = ast->child->next;
-    
+    bind_t * bind;
+    int allocated = 0;
+
     exec_ast(jit, expr);
+    if (id->val != NULL) 
+        allocated = 1; /* lambda struct has already been allocated */
     exec_place(jit, id);
         
     /* convert function to lambda */
     if (id->type->typ == LAMBDA && expr->type->typ == FN)
     {
+        /* malloc space for lambda struct */
+        if (!allocated) /* if we didn't already allocate the struct for dest */
+        {
+            LLVMTypeRef str_ty = lambda_type(jit, id->type);
+            LLVMValueRef s = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+            
+            /* place allocated struct into struct pointer */
+            bind = find_symbol(id->sym);
+            LLVMBuildStore(jit->builder, s, bind->val);
+            id->val = bind->val;
+        }
+
         /* get lambda struct */
         LLVMValueRef str = LLVMBuildLoad(jit->builder, id->val, "lambda_s");
         
@@ -1067,7 +1071,6 @@ void fill_in_types(ast_t * ast)
         if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
             subst_type(&bind->type); /* fill in the type */        
     }
-    
     if (ast->child != NULL) /* depth first */
         fill_in_types(ast->child);
 
@@ -1166,15 +1169,92 @@ int exec_fndef(jit_t * jit, ast_t * ast)
     LLVMPositionBuilderAtEnd(jit->builder, entry);
        
     /* make allocas for the function parameters */
-    exec_fnparams(jit, ast->child->next);
+    exec_fnparams(jit, fn->next);
     
-    /* jit the statements in the function body */
+    /* jit the statements in the lambda body */
     ast_t * p = fn->next->next->child;
     while (p != NULL)
     {
         exec_ast(jit, p);
         p = p->next;
     }
+            
+    /* run the pass manager on the jit'd function */
+    LLVMRunFunctionPassManager(jit->pass, jit->function); 
+    
+    /* clean up */
+    LLVMDisposeBuilder(jit->builder);  
+    jit->builder = build_save;
+    jit->function = fn_save;    
+    current_scope = scope_save;
+    
+    return 0;
+}
+
+/*
+   Jit a lambda
+*/
+int exec_lambda(jit_t * jit, ast_t * ast)
+{
+    ast_t * fn = ast->child;
+    int params = ast->type->arity;
+    int i;
+    
+    env_t * scope_save = current_scope;
+    current_scope = ast->env;
+      
+    /* get argument types */
+    LLVMTypeRef * args = (LLVMTypeRef *) GC_MALLOC((params + 1)*sizeof(LLVMTypeRef));
+    for (i = 0; i < params; i++)
+    {
+        subst_type(&ast->type->param[i]);
+        args[i] = type_to_llvm(jit, ast->type->param[i]); 
+    }
+    args[params] = LLVMPointerType(LLVMInt8Type(), 0);
+
+    /* get return type */
+    subst_type(&ast->type->ret);
+    LLVMTypeRef ret = type_to_llvm(jit, ast->type->ret); 
+    
+    /* make LLVM function type */
+    LLVMTypeRef fn_type = LLVMFunctionType(ret, args, params + 1, 0);
+    
+    /* make llvm function object */
+    LLVMValueRef fn_save = jit->function;
+    jit->function = LLVMAddFunction(jit->module, "lambda", fn_type);
+    ast->val = jit->function;
+
+    /* add the prototype to the symbol binding */
+    bind_t * bind = find_symbol(sym_lookup("lambda"));
+    bind->val = jit->function;
+    bind->type = ast->type;
+
+    /* jit setup */
+    LLVMBuilderRef build_save = jit->builder;
+    jit->builder = LLVMCreateBuilder();
+
+    /* first basic block */
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlock(jit->function, "entry");
+    LLVMPositionBuilderAtEnd(jit->builder, entry);
+       
+    /* make allocas for the function parameters */
+    exec_fnparams(jit, ast->child);
+    
+    /* jit the statements in the function body */
+    ast_t * p = ast->child->next;
+    if (p->tag == AST_EXPRBLOCK)
+    {
+        p = p->child;
+        while (p->next != NULL)
+        {
+            exec_ast(jit, p);
+            p = p->next;
+        }
+    }
+    exec_ast(jit, p);
+
+    /* jit return */
+    LLVMBuildRet(jit->builder, p->val);
 
     /* run the pass manager on the jit'd function */
     LLVMRunFunctionPassManager(jit->pass, jit->function); 
@@ -1184,6 +1264,23 @@ int exec_fndef(jit_t * jit, ast_t * ast)
     jit->builder = build_save;
     jit->function = fn_save;    
     current_scope = scope_save;
+
+    /* malloc space for lambda struct */
+    LLVMTypeRef str_ty = lambda_type(jit, bind->type);
+    LLVMValueRef str = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+            
+    /* set function entry */
+    LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+    LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
+    LLVMBuildStore(jit->builder, bind->val, fn_entry);
+        
+    /* set environment entry to NULL */
+    LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
+    LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
+    LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
+
+    bind->val = str;
+    ast->val = str;
     
     return 0;
 }
@@ -1346,6 +1443,8 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_break(jit, ast);
     case AST_FNDEC:
         return exec_fndec(jit, ast);
+    case AST_LAMBDA:
+        return exec_lambda(jit, ast);
     case AST_RETURN:
         return exec_return(jit, ast);
     case AST_APPL:

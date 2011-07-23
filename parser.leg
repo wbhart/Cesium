@@ -69,6 +69,16 @@ Block         = ( Spacing r:VarStmt | r:Statement )
               {  
                   $$ = ast_reverse(r);
               }
+ExprBlock     = Spacing r:Expression
+                ( ';' Spacing s:Expression 
+              {
+                  s->next = r;
+                  r = s;
+              }
+                )* ';'?
+              {  
+                  $$ = ast_reverse(r);
+              }
 BlockStmt     = LBrace { scope_up(); } r:Block RBrace
               {
                   $$ = ast_unary(r, AST_BLOCK);
@@ -79,8 +89,8 @@ WhileStmt     = While LParen e:Expression RParen s1:Statement
               {
                   $$ = ast_stmt2(e, s1, AST_WHILE);
               }
-ParamList     = LParen RParen { $$ = ast_stmt0(AST_NIL); }
-              | LParen r:Identifier ( Comma s:Identifier 
+ParamList     = Spacing LParen RParen { $$ = ast_stmt0(AST_NIL); }
+              | Spacing LParen r:Identifier ( Comma s:Identifier 
               {
                   s->next = r;
                   r = s;
@@ -99,12 +109,25 @@ FnDec         = Fn i:Identifier { scope_up(); } p:ParamList  LBrace b:Block RBra
 VarAssign     = Assignment | Identifier
 Assignment    = r:Identifier Equals s:AssignExp
               {
-                 r->tag = AST_LVALUE;
-                 r->next = s;
-                 $$ = ast_unary(r, AST_ASSIGNMENT);
+                  r->tag = AST_LVALUE;
+                  r->next = s;
+                  $$ = ast_unary(r, AST_ASSIGNMENT);
+              }
+LambdaExp     = Lambda { scope_up(); } p:ParamList LBrace e:ExprBlock RBrace Spacing
+              {
+                  $$ = ast_stmt2(ast_unary(p, AST_PARAMS), ast_unary(e, AST_EXPRBLOCK), AST_LAMBDA);
+                  $$->env = current_scope;
+                  scope_down();
+              }
+                 | Lambda { scope_up(); } p:ParamList e:Expression 
+              {
+                  $$ = ast_stmt2(ast_unary(p, AST_PARAMS), e, AST_LAMBDA);
+                  $$->env = current_scope;
+                  scope_down();
               }
 Expression    = AssignExp
 AssignExp     = Assignment
+                 | LambdaExp
                  | ( r:Identifier o:PlusEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
                  | ( r:Identifier o:MinusEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
                  | ( r:Identifier o:TimesEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
@@ -171,6 +194,7 @@ If            = 'if' Spacing
 Else          = 'else' Spacing
 While         = 'while' Spacing
 Break         = 'break' Spacing
+Lambda        = 'lambda' Spacing
 Symtab        = 'symtab' Spacing
 Comma         = ',' Spacing
 Identifier    = < IdentStart IdentCont* > Spacing
