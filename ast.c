@@ -459,5 +459,7 @@ void ast_print(ast_t * a, int indent)
             t = t->next;
         }
         break;
+    default:
+        printf("nil\n");
     }
 }

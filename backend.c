@@ -160,6 +160,7 @@ void print_obj(jit_t * jit, typ_t typ, LLVMValueRef obj)
          llvm_printbool(jit, obj);
          break;
       case FN:
+      case LAMBDA:
       case NIL:
          llvm_printf(jit, "%s", jit->nil_str);
          break;
@@ -1044,6 +1045,7 @@ int exec_return(jit_t * jit, ast_t * ast)
         exec_ast(jit, exp);
         
         LLVMBuildRet(jit->builder, exp->val);
+        
     } else
         LLVMBuildRetVoid(jit->builder);
          
@@ -1182,7 +1184,7 @@ int exec_fndef(jit_t * jit, ast_t * ast)
     jit->builder = build_save;
     jit->function = fn_save;    
     current_scope = scope_save;
-
+    
     return 0;
 }
 
@@ -1200,7 +1202,7 @@ int exec_appl(jit_t * jit, ast_t * ast)
     
     params = fn->type->arity;
     LLVMValueRef * args = (LLVMValueRef *) /* one extra for env if lambda */
-        GC_MALLOC((params + (ast->type->typ == LAMBDA))*sizeof(LLVMValueRef));
+        GC_MALLOC((params + (fn->type->typ == LAMBDA))*sizeof(LLVMValueRef));
     
     /* jit function arguments */
     p = fn->next;
@@ -1212,7 +1214,7 @@ int exec_appl(jit_t * jit, ast_t * ast)
     }
         
     /* call function */
-    if (ast->type->typ == FN)
+    if (fn->type->typ == FN)
         ast->val = LLVMBuildCall(jit->builder, fn->val, args, params, "");
     else /* lambda */
     {

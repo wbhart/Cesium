@@ -97,6 +97,7 @@ void print_type(type_t * t)
         printf("char");
         break;
     case FN:
+    case LAMBDA:
         printf("(");
         if (t->arity == 0)
             printf("nil");
