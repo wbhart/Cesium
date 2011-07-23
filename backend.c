@@ -262,6 +262,39 @@ void llvm_cleanup(jit_t * jit)
     jit->false_str = NULL;
 }
 
+/* Convert a function type to a suitable struct type for a lambda */
+LLVMTypeRef lambda_fn_type(jit_t * jit, type_t * type)
+{
+    int params = type->arity;
+    int i;
+
+    /* get parameter types, one extra for the environment struct */
+    LLVMTypeRef * args = (LLVMTypeRef *) GC_MALLOC((params + 1)*sizeof(LLVMTypeRef));
+    for (i = 0; i < params; i++)
+        args[i] = type_to_llvm(jit, type->param[i]); 
+
+    /* we'll cast the environment struct to a pointer */
+    args[params] = LLVMPointerType(LLVMInt8Type(), 0);
+
+    /* get return type */
+    LLVMTypeRef ret = type_to_llvm(jit, type->ret); 
+    
+    /* make LLVM function type */
+    return LLVMFunctionType(ret, args, params + 1, 0);
+}
+
+LLVMTypeRef lambda_type(jit_t * jit, type_t * type)
+{
+    LLVMTypeRef fn_ty = lambda_fn_type(jit, type);
+    
+    /* get lambda struct element types */
+    LLVMTypeRef * str_ty = (LLVMTypeRef *) GC_MALLOC(2*sizeof(LLVMTypeRef));
+    str_ty[0] = LLVMPointerType(fn_ty, 0);
+    str_ty[1] = LLVMPointerType(LLVMInt8Type(), 0);
+
+    return LLVMStructType(str_ty, 2, 1);
+}
+
 /* Convert a type to an LLVMTypeRef */
 LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type)
 {
@@ -293,7 +326,9 @@ LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type)
     
         /* make LLVM function type */
         return LLVMPointerType(LLVMFunctionType(ret, args, params, 0), 0);
-    } else if (type->typ == TYPEVAR)
+    } else if (type->typ == LAMBDA)
+        return LLVMPointerType(lambda_type(jit, type), 0);
+    else if (type->typ == TYPEVAR)
         jit_exception(jit, "Unable to infer types\n");
     else
         jit_exception(jit, "Internal error: unknown type in type_to_llvm\n");
@@ -663,6 +698,41 @@ int exec_binary_pre1(exec_lsheq, LLVMBuildShl, "lsheq")
 
 int exec_binary_pre1(exec_rsheq, LLVMBuildAShr, "rsheq")
 
+LLVMValueRef make_fn_lambda(jit_t * jit, LLVMValueRef fn_entry, 
+                             LLVMValueRef fn, LLVMTypeRef fn_type)
+{
+    /* make llvm function object */
+    LLVMValueRef fn_res = LLVMAddFunction(jit->module, "lambda", fn_type);
+    
+    /* jit setup */
+    LLVMBuilderRef build_res = LLVMCreateBuilder();
+
+    /* first basic block */
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlock(fn_res, "entry");
+    LLVMPositionBuilderAtEnd(build_res, entry);
+       
+    /* make space for arguments */
+    int count = LLVMCountParams(fn);
+    LLVMValueRef * args = (LLVMValueRef *) GC_MALLOC(count*sizeof(LLVMValueRef));
+    
+    /* load arguments */
+    int i = 0;
+    for (i = 0; i < count; i++)
+        args[i] = LLVMGetParam(fn_res, i);
+
+    /* call function and return value */
+    LLVMValueRef ret = LLVMBuildCall(build_res, fn, args, count, "");
+    LLVMBuildRet(build_res, ret);
+    
+    /* run the pass manager on the jit'd function */
+    LLVMRunFunctionPassManager(jit->pass, fn_res); 
+    
+    /* clean up */
+    LLVMDisposeBuilder(build_res);  
+    
+    return fn_res;
+}
+
 /*
    Load value of identifier
 */
@@ -679,7 +749,7 @@ int exec_ident(jit_t * jit, ast_t * ast)
     }
     
     /* if it's not an LLVM function just load the value */
-    if (ast->type->typ != FN || bind->ast == NULL)
+    if ((ast->type->typ != FN && ast->type->typ != LAMBDA) || bind->ast == NULL)
         ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
     else if (bind->val != NULL) /* if the function has been jit'd, load that */
         ast->val = bind->val;
@@ -728,8 +798,25 @@ int exec_place(jit_t * jit, ast_t * ast)
     {
         bind_t * bind = ast->bind;
 
+        subst_type(&bind->type); /* fill in the type */
+        
+        if (bind->type->typ == FN) /* prepare for lambda */
+            bind->type = fn_to_lambda_type(bind->type);
+
         if (bind->val == NULL) /* we still haven't jit'd it */
+        {    
             exec_decl(jit, ast);
+
+            if (bind->type->typ == LAMBDA)
+            {
+                /* malloc space for lambda struct */
+                LLVMTypeRef str_ty = lambda_type(jit, bind->type);
+                LLVMValueRef s = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+            
+                /* place allocated struct into struct pointer */
+                LLVMBuildStore(jit->builder, s, bind->val);
+            }
+        }
 
         ast->type = bind->type; /* load particulars from binding */
         ast->val = bind->val;
@@ -748,8 +835,25 @@ int exec_assignment(jit_t * jit, ast_t * ast)
     
     exec_ast(jit, expr);
     exec_place(jit, id);
-    
-    LLVMBuildStore(jit->builder, expr->val, id->val);
+        
+    /* convert function to lambda */
+    if (id->type->typ == LAMBDA && expr->type->typ == FN)
+    {
+        /* get lambda struct */
+        LLVMValueRef str = LLVMBuildLoad(jit->builder, id->val, "lambda_s");
+        
+        /* set function entry */
+        LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+        LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
+        LLVMValueRef fn = make_fn_lambda(jit, fn_entry, expr->val, lambda_fn_type(jit, id->type));
+        LLVMBuildStore(jit->builder, fn, fn_entry);
+        
+        /* set environment entry to NULL */
+        LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
+        LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
+        LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
+    } else
+        LLVMBuildStore(jit->builder, expr->val, id->val);
     
     ast->val = expr->val;
     ast->type = expr->type;
@@ -1095,7 +1199,8 @@ int exec_appl(jit_t * jit, ast_t * ast)
     exec_ident(jit, fn);
     
     params = fn->type->arity;
-    LLVMValueRef * args = (LLVMValueRef *) GC_MALLOC(params*sizeof(LLVMValueRef));
+    LLVMValueRef * args = (LLVMValueRef *) /* one extra for env if lambda */
+        GC_MALLOC((params + (ast->type->typ == LAMBDA))*sizeof(LLVMValueRef));
     
     /* jit function arguments */
     p = fn->next;
@@ -1107,8 +1212,28 @@ int exec_appl(jit_t * jit, ast_t * ast)
     }
         
     /* call function */
-    ast->val = LLVMBuildCall(jit->builder, fn->val, args, params, "");
-    
+    if (ast->type->typ == FN)
+        ast->val = LLVMBuildCall(jit->builder, fn->val, args, params, "");
+    else /* lambda */
+    {
+        /* load struct */
+        LLVMValueRef str = fn->val;
+
+        /* load function entry */
+        LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+        LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
+        LLVMValueRef function = LLVMBuildLoad(jit->builder, fn_entry, "lambda");
+        
+        /* load environment entry */
+        LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
+        LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
+        env = LLVMBuildLoad(jit->builder, env, "env");
+        args[i] = env;
+
+        /* call function */
+        ast->val = LLVMBuildCall(jit->builder, function, args, params + 1, "");
+    }
+
     /* update return type */
     ast->type = fn->type->ret; 
         

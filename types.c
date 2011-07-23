@@ -49,6 +49,15 @@ type_t * fn_type(type_t * ret, int num, type_t ** param)
    return t;
 }
 
+/* convert to a lambda type */
+type_t * fn_to_lambda_type(type_t * type)
+{
+    type = fn_type(type->ret, type->arity, type->param);
+    type->typ = LAMBDA; 
+    return type;
+}
+
+
 type_t * new_typevar(void)
 {
     static long typevarnum = 0;

@@ -42,6 +42,8 @@ void llvm_reset(jit_t * jit);
 
 void llvm_cleanup(jit_t * jit);
 
+LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type);
+
 int exec_place(jit_t * jit, ast_t * ast);
 
 int exec_ident(jit_t * jit, ast_t * ast);

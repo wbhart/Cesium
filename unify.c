@@ -128,9 +128,9 @@ void unify(type_rel_t * rels, type_rel_t * ass)
             rel_assign = rel;
         } else if (rel->t2->typ == TYPEVAR)
             push_type_rel(rel->t2, rel->t1);
-        else if (rel->t1->typ == FN)
+        else if (rel->t1->typ == FN || rel->t1->typ == LAMBDA)
         {
-            if (rel->t2->typ != FN || rel->t1->arity != rel->t2->arity)
+            if ((rel->t2->typ != FN && rel->t2->typ != LAMBDA) || rel->t1->arity != rel->t2->arity)
                 exception("Type mismatch: function type not matched!\n");
             push_type_rel(rel->t1->ret, rel->t2->ret);
             for (i = 0; i < rel->t1->arity; i++)
@@ -399,7 +399,7 @@ void annotate_ast(ast_t * a)
         count = ast_list_length(p);
         
         /* the function may be passed via a parameter whose type is a typevar */
-        if (id->type->typ != FN) 
+        if (id->type->typ != FN && id->type->typ != LAMBDA) 
         {
             /* build appropriate function type */
             param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
