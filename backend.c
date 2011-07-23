@@ -1306,6 +1306,27 @@ int exec_appl(jit_t * jit, ast_t * ast)
     for (i = 0; i < params; i++)
     {
         exec_ast(jit, p);
+        if (p->type->typ == FN) /* convert to lambda */
+        {
+            /* malloc space for lambda struct */
+            LLVMTypeRef str_ty = lambda_type(jit, p->type);
+            LLVMValueRef str = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+            
+            /* set function entry */
+            LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+            LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
+            p->val = make_fn_lambda(jit, fn_entry, p->val, lambda_fn_type(jit, p->type));
+            LLVMBuildStore(jit->builder, p->val, fn_entry);
+        
+            /* set environment entry to NULL */
+            LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
+            LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
+            LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
+            p->val = str;
+
+            /* set lambda type */
+            p->type->typ = LAMBDA;
+        }
         args[i] = p->val;
         p = p->next;
     }

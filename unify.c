@@ -468,6 +468,7 @@ void annotate_ast(ast_t * a)
             for (i = 0; i < count; i++)
                 param[i] = new_typevar();
             type_t * fn_ty = fn_type(new_typevar(), count, param);
+            fn_ty->typ = LAMBDA;
 
             /* use it instead and infer the typevar */
             push_type_rel(id->type, fn_ty);
