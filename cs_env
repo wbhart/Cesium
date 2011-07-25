@@ -1,1 +1,7 @@
+#!/usr/sh
+if [ $1 = --no-gc ]; then
+	export CS_GC_INC=./gc
+else
+	export CS_GC_INC=/home/wbhart/gc/include
+fi
 export LD_LIBRARY_PATH=/home/wbhart/cstar2:/home/wbhart/gc/lib:$LD_LIBRARY_PATH

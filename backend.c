@@ -798,7 +798,7 @@ int exec_decl(jit_t * jit, ast_t * ast)
         {
             bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);
             LLVMSetInitializer(bind->val, LLVMGetUndef(type));
-        } else /* variable is global */
+        } else /* variable is local */
             bind->val = LLVMBuildAlloca(jit->builder, type, bind->sym->name);
     }
 
@@ -877,7 +877,7 @@ int exec_assignment(jit_t * jit, ast_t * ast)
         LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
     } else
         LLVMBuildStore(jit->builder, expr->val, id->val);
-     
+    
     ast->val = expr->val;
     ast->type = expr->type;
 
@@ -1502,7 +1502,7 @@ int exec_lambda(jit_t * jit, ast_t * ast)
     
     bind->val = str;
     ast->val = str;
-
+    
     return 0;
 }
 
@@ -1640,6 +1640,9 @@ void collect_idents(jit_t * jit, ast_t * ast)
 
     if (ast->child != NULL && ast->tag != AST_PARAMS) /* don't process params */
         collect_idents(jit, ast->child); /* depth first */
+
+    if (ast->tag == AST_FNDEC || ast->tag == AST_LAMBDA || ast->tag == AST_BLOCK)
+        scope_down();
 
     if (ast->next != NULL)
         collect_idents(jit, ast->next); /* then breadth */

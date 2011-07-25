@@ -352,3 +352,28 @@ fn b(a) {
 var f = b(7);
 var g = f(8);
 g(10);
+
+fn array(n) {
+   var i = 0;
+   var get, set;
+   if (n == 1) {
+      get = lambda(j, k) { i };
+      set = lambda(j, k) { i = k };
+   } else {
+      var a = array(n - 1);
+      var g = a(0), s = a(1);
+      get = lambda(j, k) { if j == n then i else g(j, 0) };
+      set = lambda(j, k) { if j == n then i = k else s(j, k) };
+   }
+   return lambda(j) { if j == 0 then get else set };
+}
+var A = array(100);
+var g = A(0), s = A(1);
+var getA = lambda(n) { g(n, 0) };
+fn setA(a, b) { s(a, b); return; }
+setA(10, 13);
+
+var a = lambda(n) { n + 1 };
+var b = lambda(n) { a(n) };
+b(10);
+

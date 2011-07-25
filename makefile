@@ -1,5 +1,5 @@
 CS_LIBS=-L/usr/local/lib -L/home/wbhart/gc/lib 
-CS_INC=-I/usr/local/include -I/home/wbhart/gc/include
+CS_INC=-I/usr/local/include -I$(CS_GC_INC)
 CS_FLAGS=-O2 -g -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS
 
 all: parser.c symbol.o ast.o types.o unify.o environment.o backend.o cesium.c exception.o
