@@ -1,5 +1,5 @@
 #!/usr/sh
-if [ $1 = --no-gc ]; then
+if [ "$1" = --no-gc ]; then
 	export CS_GC_INC=./gc
 else
 	export CS_GC_INC=/home/wbhart/gc/include
