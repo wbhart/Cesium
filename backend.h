@@ -34,6 +34,10 @@ typedef struct jit_t
     LLVMValueRef true_str;
     LLVMValueRef false_str;
     LLVMBasicBlockRef breakto;
+    struct bind_t ** bind_arr;
+    int bind_num;
+    LLVMTypeRef env_s;
+    LLVMValueRef env;
 } jit_t;
 
 jit_t * llvm_init(void);
@@ -51,6 +55,8 @@ int exec_ident(jit_t * jit, ast_t * ast);
 int exec_fndef(jit_t * jit, ast_t * ast);
 
 int exec_lambda(jit_t * jit, ast_t * ast);
+
+void make_env_s(jit_t * jit);
 
 int exec_ast(jit_t * jit, ast_t * ast);
 

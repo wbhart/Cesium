@@ -46,6 +46,8 @@ typedef struct ast_t {
    struct bind_t * bind;
    struct env_t * env;
    LLVMValueRef val;
+   struct bind_t ** bind_arr;
+   int bind_num;
 } ast_t;
 
 extern ast_t * root;

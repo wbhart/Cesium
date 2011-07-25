@@ -35,6 +35,19 @@ int scope_is_global(bind_t * bind)
    return 0;
 }
 
+int scope_is_current(bind_t * bind)
+{
+   bind_t * b = current_scope->scope;
+
+   while (b != NULL)
+   {
+      if (b == bind)
+         return 1;
+      b = b->next;
+   }
+   return 0;
+}
+
 void scope_mark(void)
 {
    scope_ptr = current_scope->scope;

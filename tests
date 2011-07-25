@@ -324,3 +324,24 @@ fn b() {
 var add1 = b();
 add1(10);
 
+fn b() {
+   var i = 1;
+   return lambda(n){ n + i };
+}
+var f = b();
+f(10);
+
+fn b(a) {
+   var i = 1;
+   return lambda(n){ n + a + i };
+}
+var f = b(7);
+f(10);
+
+fn b(a) {
+   var i = 1;
+   return lambda(n){ lambda(m) { m + n + a + i } };
+}
+var f = b(7);
+var g = f(8);
+g(10);

@@ -37,6 +37,8 @@ void scope_init(void);
 
 int scope_is_global(bind_t * bind);
 
+int scope_is_current(bind_t * bind);
+
 void scope_mark(void);
 
 void rewind_scope(void);
