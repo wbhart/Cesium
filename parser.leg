@@ -179,8 +179,12 @@ ArgList       = LParen RParen { $$ = ast_stmt0(AST_NIL); }
 PostfixExp    = ( r:Identifier Incr ) { $$ = ast_unary(r, AST_POST_INC); }
                  | ( r:Identifier Decr ) { $$ = ast_unary(r, AST_POST_DEC); }
                  | r:Identifier s:ArgList { $$ = ast_stmt2(r, s, AST_APPL); }
-                 | Primary 
-Primary       = ( Boolean | Identifier | Double | IntConst | String 
+                 | Primary
+IfExpr        = If c:Expression Then e1:Expression Else e2:Expression
+              { 
+                 $$ = ast_stmt3(c, e1, e2, AST_IFEXPR);
+              }              
+Primary       = ( IfExpr | Boolean | Identifier | Double | IntConst | String 
                  | ( LParen Expression RParen ) )
 
 Fn            = 'fn' Spacing
@@ -191,13 +195,15 @@ Return        = < 'return' > Spacing
               }
 Var           = 'var' Spacing
 If            = 'if' Spacing
+Then          = 'then' Spacing
 Else          = 'else' Spacing
 While         = 'while' Spacing
 Break         = 'break' Spacing
 Lambda        = 'lambda' Spacing
 Symtab        = 'symtab' Spacing
 Comma         = ',' Spacing
-Identifier    = < IdentStart IdentCont* > Spacing
+Reserved      = Var | If | Then | Else | While | Break | Lambda | Return | Fn | Symtab
+Identifier    = !Reserved < IdentStart IdentCont* > Spacing
               {
                  sym_t * sym = sym_lookup(yytext);
                  $$ = ast_symbol(sym, AST_IDENT);

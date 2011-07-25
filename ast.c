@@ -410,6 +410,13 @@ void ast_print(ast_t * a, int indent)
         ast_print(a->child->next, indent + 3);
         ast_print(a->child->next->next, indent + 3);
         break;
+    case AST_IFEXPR:
+        printf("if_expr");
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        ast_print(a->child->next, indent + 3);
+        ast_print(a->child->next->next, indent + 3);
+        break;
     case AST_BLOCK:
     case AST_FNBLOCK:
     case AST_EXPRBLOCK:

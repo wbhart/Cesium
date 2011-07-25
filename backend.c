@@ -990,6 +990,50 @@ int exec_ifelse(jit_t * jit, ast_t * ast)
 }
 
 /*
+   Jit an if expression
+*/
+int exec_ifexpr(jit_t * jit, ast_t * ast)
+{
+    ast_t * exp = ast->child;
+    ast_t * con = exp->next;
+    ast_t * alt = con->next;
+    
+    LLVMBasicBlockRef i = LLVMAppendBasicBlock(jit->function, "if");
+    LLVMBasicBlockRef b1 = LLVMAppendBasicBlock(jit->function, "ifbody");
+    LLVMBasicBlockRef b2 = LLVMAppendBasicBlock(jit->function, "elsebody");
+    LLVMBasicBlockRef e = LLVMAppendBasicBlock(jit->function, "ifend");
+
+    LLVMBuildBr(jit->builder, i);
+    LLVMPositionBuilderAtEnd(jit->builder, i);  
+    
+    exec_ast(jit, exp); /* expression */
+
+    subst_type(&ast->type);
+    LLVMValueRef val = LLVMBuildAlloca(jit->builder, type_to_llvm(jit, ast->type), "ifexpr");
+    
+    LLVMBuildCondBr(jit->builder, exp->val, b1, b2);
+    LLVMPositionBuilderAtEnd(jit->builder, b1); 
+   
+    exec_ast(jit, con); /* stmt1 */
+    LLVMBuildStore(jit->builder, con->val, val);
+
+    LLVMBuildBr(jit->builder, e);
+
+    LLVMPositionBuilderAtEnd(jit->builder, b2);  
+
+    exec_ast(jit, alt); /* stmt2 */
+    LLVMBuildStore(jit->builder, alt->val, val);
+
+    LLVMBuildBr(jit->builder, e);
+
+    LLVMPositionBuilderAtEnd(jit->builder, e); 
+    
+    ast->val = LLVMBuildLoad(jit->builder, val, "val");
+      
+    return 0;
+}
+
+/*
    Jit a block of statements
 */
 int exec_block(jit_t * jit, ast_t * ast)
@@ -1693,6 +1737,8 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_if(jit, ast);
     case AST_IFELSE:
         return exec_ifelse(jit, ast);
+    case AST_IFEXPR:
+        return exec_ifexpr(jit, ast);
     case AST_BLOCK:
         return exec_block(jit, ast);
     case AST_WHILE:

@@ -305,6 +305,14 @@ void annotate_ast(ast_t * a)
         a->type = t_nil;
         push_type_rel(a->child->type, t_bool);
         break;
+    case AST_IFEXPR:
+        annotate_ast(a->child);
+        annotate_ast(a->child->next);
+        annotate_ast(a->child->next->next);
+        a->type = a->child->next->type;
+        push_type_rel(a->child->type, t_bool);
+        push_type_rel(a->child->next->type, a->child->next->next->type);
+        break;
     case AST_BLOCK:
         t = a->child;
         current_scope = a->env;

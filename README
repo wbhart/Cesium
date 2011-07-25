@@ -34,7 +34,7 @@ var i = 1.2, j = 2.2, k = i + j - i*j;
 
 etc.
 
-The following control flow expressions are valid:
+The following control flow statements are valid:
 
 1) if (bool_expr) stmt1 
 2) if (bool_expr) stmt1 ; (useful at the top level)
@@ -42,6 +42,10 @@ The following control flow expressions are valid:
 4) while (bool_expr) stmt1
 5) break;
 6) { stmt; ... }
+
+The following compound expressions are valid:
+
+1) if expr then expr1 else expr2
 
 Functions and applications are as follows:
 
