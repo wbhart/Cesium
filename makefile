@@ -1,4 +1,4 @@
-CS_LIBS=-L/usr/local/lib -L/home/wbhart/gc/lib
+CS_LIBS=-L/usr/local/lib -L/home/wbhart/gc/lib 
 CS_INC=-I/usr/local/include -I/home/wbhart/gc/include
 CS_FLAGS=-O2 -g -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS
 
@@ -15,7 +15,7 @@ ast.o: ast.h ast.c
 	g++ -c $(CS_FLAGS) $(CS_INC) ast.c -o ast.o
 
 types.o: types.h types.c
-	gcc -c $(CS_FLAGS) $(CS_INC) types.c -o types.o
+	g++ -c $(CS_FLAGS) $(CS_INC) types.c -o types.o
 
 unify.o: unify.h unify.c
 	g++ -c $(CS_FLAGS) $(CS_INC) unify.c -o unify.o
@@ -27,7 +27,7 @@ backend.o: backend.h backend.c
 	g++ -c $(CS_FLAGS) $(CS_INC) backend.c -o backend.o
 
 exception.o: exception.h exception.c
-	gcc -c $(CS_FLAGS) $(CS_INC) exception.c -o exception.o
+	g++ -c $(CS_FLAGS) $(CS_INC) exception.c -o exception.o
 
 greg:
 	$(MAKE) -C greg-0.1

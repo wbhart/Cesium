@@ -7,6 +7,10 @@
 
 #define YYSTYPE ast_t *
 
+#define YY_ALLOC(N, D) malloc(10*(N))
+#define YY_CALLOC(N, S, D) calloc(10*(N), S)
+#define YY_REALLOC(B, N, D) realloc(B, 10*(N))
+
 #define YY_INPUT(buf, result, max_size, core)         \
 {                                                     \
   int yyc = fgetc(stdin);                             \

@@ -168,7 +168,10 @@ void annotate_ast(ast_t * a)
             a->type = b->type;
             a->bind = b; /* make sure we use the right binding */
         } else
+        {
+           printf("%s ", a->sym->name);
            exception("Unbound symbol\n");
+        }
         break;
     case AST_LVALUE:
         b = find_symbol(a->sym);
@@ -176,8 +179,12 @@ void annotate_ast(ast_t * a)
         {
             a->type = b->type;
             a->bind = b; /* make sure we use the right binding */
+            b->initialised = 1; 
         } else
+        {
+           printf("%s ", a->sym->name);
            exception("Unbound symbol\n");
+        }
         break;
     case AST_DOUBLE:
         a->type = t_double;

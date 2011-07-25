@@ -55,8 +55,9 @@ Functions and applications are as follows:
 Anonymous functions (closures) are expressions which can be defined as:
 
 1) lambda(a, b, c) { expr1; expr2; ...; expr }
+2) lambda(a, b, c) expr
 
-Beware that as they are expressions, a statement ending in a lambda must be terminated by a semicolon.
+Beware that as they are expressions, a statement ending in a lambda must be terminated by a semicolon __even if it already ends in a semicolon__.
 
 The file "tests" gives a lot of examples of things you can (and can't) do.
 

@@ -11,7 +11,7 @@ type_t * t_char;
 
 type_t * new_type(typ_t typ)
 {
-   type_t * t = GC_MALLOC(sizeof(type_t));
+   type_t * t = (type_t *) GC_MALLOC(sizeof(type_t));
    t->typ = typ;
    t->arity = 0;
    return t;
@@ -36,9 +36,9 @@ int type_equal(type_t * t1, type_t * t2)
 
 type_t * fn_type(type_t * ret, int num, type_t ** param)
 {
-   type_t * t = GC_MALLOC(sizeof(type_t));
+   type_t * t = (type_t *) GC_MALLOC(sizeof(type_t));
    t->typ = FN;
-   t->param = GC_MALLOC(sizeof(type_t *)*num);
+   t->param = (type_t **) GC_MALLOC(sizeof(type_t *)*num);
    t->ret = ret;
    t->arity = num;
 

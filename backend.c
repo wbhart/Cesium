@@ -17,6 +17,10 @@
 #include <llvm-c/Target.h>  
 #include <llvm-c/Transforms/Scalar.h> 
 
+#ifndef CS_MALLOC_NAME /* make it easy to turn off GC */
+#define CS_MALLOC_NAME "GC_malloc"
+#endif
+
 /* 
    Tell LLVM about some external library functions so we can call them 
    and about some constants we want to use from jit'd code
@@ -39,6 +43,20 @@ void llvm_functions(jit_t * jit)
    ret = LLVMVoidType();
    fntype = LLVMFunctionType(ret, args, 1, 0);
    fn = LLVMAddFunction(jit->module, "exit", fntype);
+
+   /* patch in the GC_MALLOC function */
+   args[0] = LLVMWordType();
+   ret = LLVMPointerType(LLVMInt8Type(), 0);
+   fntype = LLVMFunctionType(ret, args, 1, 0);
+   fn = LLVMAddFunction(jit->module, CS_MALLOC_NAME, fntype);
+}
+
+LLVMValueRef LLVMBuildGCMalloc(jit_t * jit, LLVMTypeRef type, const char * name)
+{
+    LLVMValueRef fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME);
+    LLVMValueRef arg[1] = { LLVMSizeOf(type) };
+    LLVMValueRef gcmalloc = LLVMBuildCall(jit->builder, fn, arg, 1, "gc_malloc");
+    return LLVMBuildPointerCast(jit->builder, gcmalloc, LLVMPointerType(type, 0), name);
 }
 
 /* count parameters as represented by %'s in format string */
@@ -836,7 +854,7 @@ int exec_assignment(jit_t * jit, ast_t * ast)
         if (!allocated) /* if we didn't already allocate the struct for dest */
         {
             LLVMTypeRef str_ty = lambda_type(jit, id->type);
-            LLVMValueRef s = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+            LLVMValueRef s = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
             
             /* place allocated struct into struct pointer */
             bind = find_symbol(id->sym);
@@ -1117,7 +1135,7 @@ int exec_return(jit_t * jit, ast_t * ast)
         {
             /* malloc space for lambda struct */
             LLVMTypeRef str_ty = lambda_type(jit, p->type);
-            LLVMValueRef str = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+            LLVMValueRef str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
             
             /* set function entry */
             LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
@@ -1324,7 +1342,7 @@ int exec_fndef(jit_t * jit, ast_t * ast)
        
     /* make environment malloc */
     if (jit->bind_num != 0)
-        jit->env = LLVMBuildMalloc(jit->builder, jit->env_s, "env");
+        jit->env = LLVMBuildGCMalloc(jit, jit->env_s, "env");
 
     /* make allocas for the function parameters */
     exec_fnparams(jit, fn->next);
@@ -1430,7 +1448,7 @@ int exec_lambda(jit_t * jit, ast_t * ast)
     {
         /* malloc space for lambda struct */
         LLVMTypeRef str_ty = lambda_type(jit, p->type);
-        LLVMValueRef str = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+        LLVMValueRef str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
             
         /* set function entry */
         LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
@@ -1467,7 +1485,7 @@ int exec_lambda(jit_t * jit, ast_t * ast)
     
     /* malloc space for lambda struct */
     LLVMTypeRef str_ty = lambda_type(jit, bind->type);
-    LLVMValueRef str = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+    LLVMValueRef str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
             
     /* set function entry */
     LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
@@ -1513,7 +1531,7 @@ int exec_appl(jit_t * jit, ast_t * ast)
         {
             /* malloc space for lambda struct */
             LLVMTypeRef str_ty = lambda_type(jit, p->type);
-            LLVMValueRef str = LLVMBuildMalloc(jit->builder, str_ty, "lambda_s");
+            LLVMValueRef str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
             
             /* set function entry */
             LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
@@ -1766,7 +1784,7 @@ void exec_root(jit_t * jit, ast_t * ast)
     START_EXEC;
          
     process_lambdas(jit, ast);
-
+    
     if (ast->tag == AST_FNDEC) /* save bind array for when function is jit'd */
     {
         ast->bind_arr = jit->bind_arr;
@@ -1777,11 +1795,11 @@ void exec_root(jit_t * jit, ast_t * ast)
     {
         make_env_s(jit);
         if (jit->bind_num != 0)
-            jit->env = LLVMBuildMalloc(jit->builder, jit->env_s, "env");
+            jit->env = LLVMBuildGCMalloc(jit, jit->env_s, "env");
     }
-
+    
     exec_ast(jit, ast);
-
+    
     print_obj(jit, ast->type->typ, ast->val);
     
     END_EXEC;
