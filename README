@@ -48,6 +48,12 @@ Functions and applications are as follows:
 1) fn fn_name(a, b, c, ....) { stmt; .... return expr; .... }
 2) fn_name(1, 2, 3, ....);
 
+Anonymous functions (closures) are expressions which can be defined as:
+
+1) lambda(a, b, c) { expr1; expr2; ...; expr }
+
+Beware that as they are expressions, a statement ending in a lambda must be terminated by a semicolon.
+
 The file "tests" gives a lot of examples of things you can (and can't) do.
 
 Note there are no typeclass checks at the moment. Things like "string"+"more"; typecheck fine, but then just crash. This will be fixed eventually.
