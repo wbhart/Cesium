@@ -116,9 +116,20 @@ FnDec         = Fn i:Identifier { scope_up(); } p:ParamList  LBrace b:Block RBra
               }
 
 VarAssign     = Assignment | Identifier
-Assignment    = r:Identifier Equals s:AssignExp
+Place         = r:Identifier { r->tag = AST_LVALUE; }
+              | LParen r:Place 
+                ( Comma s:Place 
+              { 
+                  s->next = r;
+                  r = s;
+              }
+                 )* RParen
               {
-                  r->tag = AST_LVALUE;
+                 r = ast_reverse(r);
+                 $$ = ast_unary(r, AST_LTUPLE);
+              }
+Assignment    = r:Place Equals s:AssignExp
+              {
                   r->next = s;
                   $$ = ast_unary(r, AST_ASSIGNMENT);
               }
@@ -193,8 +204,20 @@ IfExpr        = If c:Expression Then e1:Expression Else e2:Expression
               { 
                  $$ = ast_stmt3(c, e1, e2, AST_IFEXPR);
               }              
+TupleExpr     = LParen r:Expression 
+                ( Comma s:Expression 
+              { 
+                  s->next = r;
+                  r = s;
+              }
+                 )* RParen
+              {
+                 r = ast_reverse(r);
+                 $$ = ast_unary(r, AST_TUPLE);
+              }
 Primary       = ( IfExpr | Boolean | Identifier | Double | IntConst | String 
                  | ( LParen Expression RParen ) )
+                 | TupleExpr
 
 Fn            = 'fn' Spacing
 Return        = < 'return' > Spacing

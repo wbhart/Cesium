@@ -49,6 +49,20 @@ type_t * fn_type(type_t * ret, int num, type_t ** param)
    return t;
 }
 
+type_t * tuple_type(int num, type_t ** param)
+{
+   type_t * t = (type_t *) GC_MALLOC(sizeof(type_t));
+   t->typ = TUPLE;
+   t->param = (type_t **) GC_MALLOC(sizeof(type_t *)*num);
+   t->arity = num;
+
+   int i;
+   for (i = 0; i < num; i++)
+      t->param[i] = param[i];
+
+   return t;
+}
+
 /* convert to a lambda type */
 type_t * fn_to_lambda_type(type_t * type)
 {
@@ -110,8 +124,18 @@ void print_type(type_t * t)
             }
             print_type(t->param[i]);
         }
+        printf(")");
         printf(" -> ");
         print_type(t->ret);
+        break;
+    case TUPLE:
+        printf("(");
+        for (i = 0; i < t->arity - 1; i++)
+        {
+            print_type(t->param[i]);
+            printf(", ");
+        }
+        print_type(t->param[i]);
         printf(")");
         break;
     case TYPEVAR:

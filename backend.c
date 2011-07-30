@@ -145,14 +145,43 @@ void llvm_printbool(jit_t * jit, LLVMValueRef obj)
     LLVMPositionBuilderAtEnd(jit->builder, e);
 }
 
+/* 
+    Jits a print of a tuple
+*/
+void print_tuple(jit_t * jit, type_t * type, LLVMValueRef obj)
+{
+    int count = type->arity;
+    int i;
+
+    llvm_printf(jit, "(");
+    
+    /* print comma separated list of params */
+    for (i = 0; i < count - 1; i++)
+    {
+        LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), i, 0) };
+        LLVMValueRef p = LLVMBuildInBoundsGEP(jit->builder, obj, index, 2, "tuple");
+        p = LLVMBuildLoad(jit->builder, p, "entry");
+        print_obj(jit, type->param[i], p);
+        llvm_printf(jit, ", ");
+    }
+    
+    /* print final param */
+    LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), i, 0) };
+    LLVMValueRef p = LLVMBuildInBoundsGEP(jit->builder, obj, index, 2, "tuple");
+    p = LLVMBuildLoad(jit->builder, p, "entry");
+    print_obj(jit, type->param[i], p);
+        
+    llvm_printf(jit, ")");
+}
+
 /*
    This jits a printf for various cesium types. We use it to print
    the result of expressions that are evaluated, before returning from
    a jit'd expression.
 */
-void print_obj(jit_t * jit, typ_t typ, LLVMValueRef obj)
+void print_obj(jit_t * jit, type_t * type, LLVMValueRef obj)
 {
-   switch (typ)
+   switch (type->typ)
    {
       case INT:
          llvm_printf(jit, "%ld", obj);
@@ -173,6 +202,9 @@ void print_obj(jit_t * jit, typ_t typ, LLVMValueRef obj)
       case LAMBDA:
       case NIL:
          llvm_printf(jit, "%s", jit->nil_str);
+         break;
+      case TUPLE:
+         print_tuple(jit, type, obj);
          break;
    }
 }
@@ -320,6 +352,22 @@ LLVMTypeRef lambda_type(jit_t * jit, type_t * type)
     return LLVMStructType(str_ty, 2, 1);
 }
 
+/* Build llvm struct type from ordinary tuple type  */
+LLVMTypeRef tup_type(jit_t * jit, type_t * type)
+{
+    int params = type->arity;
+    int i;
+
+    /* get parameter types */
+    LLVMTypeRef * args = (LLVMTypeRef *) GC_MALLOC(params*sizeof(LLVMTypeRef));
+    for (i = 0; i < params; i++)
+        args[i] = type_to_llvm(jit, type->param[i]); 
+
+    /* make LLVM struct type */
+    return LLVMStructType(args, params, 1);
+}
+
+
 /* Convert a type to an LLVMTypeRef */
 LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type)
 {
@@ -353,6 +401,8 @@ LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type)
         return LLVMPointerType(LLVMFunctionType(ret, args, params, 0), 0);
     } else if (type->typ == LAMBDA)
         return LLVMPointerType(lambda_type(jit, type), 0);
+    else if (type->typ == TUPLE)
+        return LLVMPointerType(tup_type(jit, type), 0);
     else if (type->typ == TYPEVAR)
         jit_exception(jit, "Unable to infer types\n");
     else
@@ -842,25 +892,19 @@ int exec_place(jit_t * jit, ast_t * ast)
     return 0;
 }
 
-/*
-   Jit a variable assignment
-*/
-int exec_assignment(jit_t * jit, ast_t * ast)
+int exec_assign_id(jit_t * jit, ast_t * id, type_t * type, LLVMValueRef val)
 {
-    ast_t * id = ast->child;
-    ast_t * expr = ast->child->next;
-    bind_t * bind;
     int allocated = 0;
 
-    exec_ast(jit, expr);
     if (id->val != NULL) 
         allocated = 1; /* lambda struct has already been allocated */
+    
     exec_place(jit, id);
         
     /* convert function to lambda */
-    if (id->type->typ == LAMBDA && expr->type->typ == FN)
+    if (id->type->typ == LAMBDA && type->typ == FN)
     {
-        id->val = make_fn_lambda(jit, expr->val, lambda_fn_type(jit, id->type));
+        id->val = make_fn_lambda(jit, val, lambda_fn_type(jit, id->type));
         
         /* malloc space for lambda struct */
         if (!allocated) /* if we didn't already allocate the struct for dest */
@@ -868,7 +912,7 @@ int exec_assignment(jit_t * jit, ast_t * ast)
             fn_to_lambda(jit, id->type, &id->val, NULL, NULL);
             
             /* place allocated struct into struct pointer */
-            bind = find_symbol(id->sym);
+            bind_t * bind = find_symbol(id->sym);
             LLVMBuildStore(jit->builder, id->val, bind->val);
         } else
         {
@@ -877,12 +921,83 @@ int exec_assignment(jit_t * jit, ast_t * ast)
             fn_to_lambda(jit, id->type, &id->val, NULL, str);
         }
     } else /* just do the store */
-        LLVMBuildStore(jit->builder, expr->val, id->val);
+        LLVMBuildStore(jit->builder, val, id->val);
+    
+    id->bind->initialised = 1; /* mark it as initialised */
+}
+
+int exec_assign_tuple(jit_t * jit, ast_t * t1, type_t * type, LLVMValueRef val)
+{
+    ast_t * p1 = t1->child;
+    int count = type->arity;
+    int i;
+
+    for (i = 0; i < count; i++)
+    {
+        /* get parameter in struct */
+        LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), i, 0) };
+        LLVMValueRef v = LLVMBuildInBoundsGEP(jit->builder, val, index, 2, "strptr");
+        v = LLVMBuildLoad(jit->builder, v, "entry");
+
+        if (p1->tag != AST_LTUPLE)
+            exec_assign_id(jit, p1, type->param[i], v);
+        else
+            exec_assign_tuple(jit, p1, type->param[i], v);
+
+        p1 = p1->next;
+    }
+
+    return 0;
+}
+
+/*
+   Jit a variable assignment
+*/
+int exec_assignment(jit_t * jit, ast_t * ast)
+{
+    ast_t * id = ast->child;
+    ast_t * expr = ast->child->next;
+    
+    exec_ast(jit, expr);
+    
+    if (id->tag != AST_LTUPLE)
+        exec_assign_id(jit, id, expr->type, expr->val);
+    else
+        exec_assign_tuple(jit, id, expr->type, expr->val);
     
     ast->val = expr->val;
     ast->type = expr->type;
 
-    id->bind->initialised = 1; /* mark it as initialised */
+    return 0;
+}
+
+int exec_varassign_id(jit_t * jit, ast_t * id)
+{
+    bind_t * bind = find_symbol(id->sym); /* deal with environment vars */
+    if (bind->val != NULL) /* the variable is in an env */
+    {
+        LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), bind->val };
+        bind->val = LLVMBuildInBoundsGEP(jit->builder, jit->env, index, 2, "env");
+        id->val = bind->val;
+        id->type = bind->type;
+    } 
+
+    return 0;
+}
+
+int exec_varassign_tuple(jit_t * jit, ast_t * p)
+{
+    p = p->child; /* first element of tuple */
+
+    while (p != NULL)
+    {
+        if (p->tag == AST_LVALUE) /* we have an identifier */
+            exec_varassign_id(jit, p);
+        else /* we have a tuple */
+            exec_varassign_tuple(jit, p);
+
+        p = p->next;
+    }
 
     return 0;
 }
@@ -911,14 +1026,12 @@ int exec_varassign(jit_t * jit, ast_t * ast)
                exec_decl(jit, p);
         } else /* AST_ASSIGNMENT */
         {
-            bind = find_symbol(p->child->sym); /* deal with environment vars */
-            if (bind->val != NULL) /* the variable is in an env */
-            {
-                LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), bind->val };
-                bind->val = LLVMBuildInBoundsGEP(jit->builder, jit->env, index, 2, "env");
-                p->child->val = bind->val;
-                p->child->type = bind->type;
-            } 
+            ast_t * id = p->child;
+            
+            if (id->tag == AST_LTUPLE) /* we have a tuple */
+                exec_varassign_tuple(jit, id);
+            else /* we have an identifier */
+                exec_varassign_id(jit, id);
 
             exec_assignment(jit, p); /* combined declaration and assignment */
         }
@@ -1565,6 +1678,41 @@ int exec_appl(jit_t * jit, ast_t * ast)
 }
 
 /*
+   Jit a tuple expression
+*/
+int exec_tuple(jit_t * jit, ast_t * ast)
+{
+    int params = ast->type->arity;
+    int i;
+
+    subst_type(&ast->type);
+
+    LLVMTypeRef str_ty = tup_type(jit, ast->type);
+    ast->val = LLVMBuildGCMalloc(jit, str_ty, "tuple_s");
+
+    ast_t * p = ast->child;
+    for (i = 0; i < params; i++)
+    {
+        exec_ast(jit, p);
+        
+        if (p->type->typ == FN) /* convert function to lambda */
+        {
+            p->val = make_fn_lambda(jit, p->val, lambda_fn_type(jit, p->type));
+            fn_to_lambda(jit, p->type, &p->val, NULL, NULL);
+        }
+ 
+        /* insert value into tuple */
+        LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), i, 0) };
+        LLVMValueRef entry = LLVMBuildInBoundsGEP(jit->builder, ast->val, indices, 2, "tuple");
+        LLVMBuildStore(jit->builder, p->val, entry);
+    
+        p = p->next;
+    }
+
+    return 0;
+}
+
+/*
     Build an llvm struct type from bindings from the bind array 
 */
 void make_env_s(jit_t * jit)
@@ -1773,6 +1921,8 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_return(jit, ast);
     case AST_APPL:
         return exec_appl(jit, ast);
+    case AST_TUPLE:
+        return exec_tuple(jit, ast);
     default:
         ast->type = t_nil;
         return 0;
@@ -1804,7 +1954,7 @@ void exec_root(jit_t * jit, ast_t * ast)
     exec_ast(jit, ast);
     
     /* print the resulting value */
-    print_obj(jit, ast->type->typ, ast->val);
+    print_obj(jit, ast->type, ast->val);
     
     END_EXEC;
          

@@ -78,6 +78,10 @@ void type_subst_type(type_t ** tin, type_rel_t * rel)
             type_subst_type(t->param + i, rel);
         if (t->ret != NULL)
             type_subst_type(&(t->ret), rel);
+    } else if (t->typ == TUPLE)
+    {
+        for (i = 0; i < t->arity; i++)
+            type_subst_type(t->param + i, rel);
     }
 }
 
@@ -136,11 +140,60 @@ void unify(type_rel_t * rels, type_rel_t * ass)
             for (i = 0; i < rel->t1->arity; i++)
                 push_type_rel(rel->t1->param[i], rel->t2->param[i]);
         }
+        else if (rel->t1->typ == TUPLE)
+        {
+            if (rel->t2->typ != TUPLE || rel->t1->arity != rel->t2->arity)
+                exception("Type mismatch: tuple type not matched!\n");
+            for (i = 0; i < rel->t1->arity; i++)
+                push_type_rel(rel->t1->param[i], rel->t2->param[i]);
+        }
         else if (rel->t1->typ != rel->t2->typ)
            exception("Type mismatch!\n");
     }
 }
 
+/* bind a new identifier in the symbol table */
+bind_t * bind_id(ast_t * id)
+{
+    id->type = new_typevar(); /* type is to be inferred */            
+    
+    /* check we're not redefining a local symbol in the current scope */
+    bind_t * bind = find_symbol_in_scope(id->sym);
+    if (bind != NULL && !scope_is_global(bind))
+        exception("Attempt to redefine local symbol\n");
+                          
+    /* make new binding in the current scope*/
+    return bind_symbol(id->sym, id->type, NULL);
+}
+
+bind_t * bind_tuple(ast_t * id)
+{
+    ast_t * p = id->child;
+    bind_t * bind;
+    int count = ast_list_length(p);
+    int i;
+
+    type_t ** param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
+    for (i = 0; i < count; i++)
+    {
+        if (p->tag == AST_LTUPLE) /* we have a tuple */
+            bind = bind_tuple(p);
+        else /* we have an identifier */
+        {
+            bind = bind_id(p); 
+            bind->initialised = 1; /* tuples vars are always initialised */
+        }
+        
+        param[i] = p->type; /* get type */
+
+        p = p->next;
+    }
+
+    id->type = tuple_type(count, param);
+
+    return bind;
+}
+ 
 /* 
    Go through each node of the AST and do the following things:
    1) Generate type variables for each node where the type is not known
@@ -185,6 +238,18 @@ void annotate_ast(ast_t * a)
            printf("%s ", a->sym->name);
            exception("Unbound symbol\n");
         }
+        break;
+    case AST_LTUPLE:
+        p = a->child;
+        count = ast_list_length(p); /* count parameters */
+        param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
+        for (i = 0; i < count; i++)
+        {
+           annotate_ast(p);
+           param[i] = p->type;
+           p = p->next;
+        }
+        a->type = tuple_type(count, param);
         break;
     case AST_DOUBLE:
         a->type = t_double;
@@ -265,35 +330,30 @@ void annotate_ast(ast_t * a)
             {
                 id = p->child;
                 expr = id->next;
-            } else /* AST_IDENT */
+            } else /* AST_IDENT or AST_TUPLE*/
                 id = p;
-            
-            id->type = new_typevar(); /* type is to be inferred */            
-            
-            /* check we're not redefining a local symbol in the current scope */
-            bind = find_symbol_in_scope(id->sym);
-            if (bind != NULL && !scope_is_global(bind))
-                exception("Attempt to redefine local symbol\n");
-              
+                        
             if (p->tag == AST_ASSIGNMENT)
                annotate_ast(expr); /* get expr before anything is redefined */
-            
-            /* make new binding in the current scope*/
-            bind = bind_symbol(id->sym, id->type, NULL);
-            
+
+            if (id->tag == AST_LTUPLE)
+                bind = bind_tuple(id);
+            else
+                bind = bind_id(id);
+                       
             /* check if it is a combined variable declaration and assignment */
             if (p->tag == AST_ASSIGNMENT)
             {
-                bind->initialised = 1; /* mark it initialised */
+                bind->initialised = 1;
                 annotate_ast(id);
                 p->type = expr->type;
                 push_type_rel(id->type, expr->type);
             } else
             {
-                bind->initialised = 0; /* mark it uninitialised */
+                bind->initialised = 0;
                 p->bind = bind;
             }
-
+ 
             p = p->next;
         }
         a->type = t_nil;
@@ -507,6 +567,27 @@ void annotate_ast(ast_t * a)
 
         /* get return types */
         a->type = id->type->ret;
+        break;
+    case AST_TUPLE:
+        /* count parameters */
+        p = a->child;
+        count = ast_list_length(p);
+        
+        /* build appropriate tuple type */
+        param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
+        
+        /* get parameter types */
+        for (i = 0; i < count; i++)
+        {
+            annotate_ast(p);
+            if (p->type->typ == FN) /* need to make type a lambda */
+                param[i] = fn_to_lambda_type(p->type);
+            else
+                param[i] = p->type;
+            p = p->next;
+        }
+            
+        a->type = tuple_type(count, param);
         break;
     }
 }

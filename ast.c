@@ -475,6 +475,19 @@ void ast_print(ast_t * a, int indent)
             t = t->next;
         }
         break;
+    case AST_TUPLE:
+    case AST_LTUPLE:
+        printf("tuple");
+        ast_print_type(a);
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        t = a->child->next;
+        while (t != NULL)
+        {
+            ast_print(t, indent + 3);
+            t = t->next;
+        }
+        break;
     default:
         printf("nil\n");
     }
