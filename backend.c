@@ -51,14 +51,6 @@ void llvm_functions(jit_t * jit)
    fn = LLVMAddFunction(jit->module, CS_MALLOC_NAME, fntype);
 }
 
-LLVMValueRef LLVMBuildGCMalloc(jit_t * jit, LLVMTypeRef type, const char * name)
-{
-    LLVMValueRef fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME);
-    LLVMValueRef arg[1] = { LLVMSizeOf(type) };
-    LLVMValueRef gcmalloc = LLVMBuildCall(jit->builder, fn, arg, 1, "gc_malloc");
-    return LLVMBuildPointerCast(jit->builder, gcmalloc, LLVMPointerType(type, 0), name);
-}
-
 /* count parameters as represented by %'s in format string */
 int count_params(const char * fmt)
 {
@@ -281,7 +273,18 @@ void llvm_cleanup(jit_t * jit)
     jit->false_str = NULL;
 }
 
-/* Convert a function type to a suitable struct type for a lambda */
+/* 
+   Jit a call to GC_malloc
+*/
+LLVMValueRef LLVMBuildGCMalloc(jit_t * jit, LLVMTypeRef type, const char * name)
+{
+    LLVMValueRef fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME);
+    LLVMValueRef arg[1] = { LLVMSizeOf(type) };
+    LLVMValueRef gcmalloc = LLVMBuildCall(jit->builder, fn, arg, 1, "gc_malloc");
+    return LLVMBuildPointerCast(jit->builder, gcmalloc, LLVMPointerType(type, 0), name);
+}
+
+/* Build llvm lambda fn type from ordinary function type  */
 LLVMTypeRef lambda_fn_type(jit_t * jit, type_t * type)
 {
     int params = type->arity;
@@ -302,6 +305,9 @@ LLVMTypeRef lambda_fn_type(jit_t * jit, type_t * type)
     return LLVMFunctionType(ret, args, params + 1, 0);
 }
 
+/* 
+    Make an llvm lambda struct type from an ordinary function type
+*/
 LLVMTypeRef lambda_type(jit_t * jit, type_t * type)
 {
     LLVMTypeRef fn_ty = lambda_fn_type(jit, type);
@@ -717,7 +723,11 @@ int exec_binary_pre1(exec_lsheq, LLVMBuildShl, "lsheq")
 
 int exec_binary_pre1(exec_rsheq, LLVMBuildAShr, "rsheq")
 
-LLVMValueRef make_fn_lambda(jit_t * jit, LLVMValueRef fn_entry, 
+/*
+   Given a function make a lambda function (i.e. function with same
+   params and an exta one for an env) which calls it
+*/
+LLVMValueRef make_fn_lambda(jit_t * jit,  
                              LLVMValueRef fn, LLVMTypeRef fn_type)
 {
     /* make llvm function object */
@@ -850,32 +860,23 @@ int exec_assignment(jit_t * jit, ast_t * ast)
     /* convert function to lambda */
     if (id->type->typ == LAMBDA && expr->type->typ == FN)
     {
+        id->val = make_fn_lambda(jit, expr->val, lambda_fn_type(jit, id->type));
+        
         /* malloc space for lambda struct */
         if (!allocated) /* if we didn't already allocate the struct for dest */
         {
-            LLVMTypeRef str_ty = lambda_type(jit, id->type);
-            LLVMValueRef s = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
+            fn_to_lambda(jit, id->type, &id->val, NULL, NULL);
             
             /* place allocated struct into struct pointer */
             bind = find_symbol(id->sym);
-            LLVMBuildStore(jit->builder, s, bind->val);
-            id->val = bind->val;
+            LLVMBuildStore(jit->builder, id->val, bind->val);
+        } else
+        {
+            /* get lambda struct */
+            LLVMValueRef str = LLVMBuildLoad(jit->builder, id->val, "lambda_s");
+            fn_to_lambda(jit, id->type, &id->val, NULL, str);
         }
-
-        /* get lambda struct */
-        LLVMValueRef str = LLVMBuildLoad(jit->builder, id->val, "lambda_s");
-        
-        /* set function entry */
-        LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
-        LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
-        LLVMValueRef fn = make_fn_lambda(jit, fn_entry, expr->val, lambda_fn_type(jit, id->type));
-        LLVMBuildStore(jit->builder, fn, fn_entry);
-            
-        /* set environment entry to NULL */
-        LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
-        LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
-        LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
-    } else
+    } else /* just do the store */
         LLVMBuildStore(jit->builder, expr->val, id->val);
     
     ast->val = expr->val;
@@ -897,10 +898,10 @@ int exec_varassign(jit_t * jit, ast_t * ast)
     {
         bind_t * bind; 
 
-        if (p->tag == AST_IDENT)
+        if (p->tag == AST_IDENT) /* no initialisation */
         {
             bind = find_symbol(p->sym); /* deal with environment vars */
-            if (bind->val != NULL)
+            if (bind->val != NULL) /* the variable is in an env */
             {
                 LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), bind->val };
                 bind->val = LLVMBuildInBoundsGEP(jit->builder, jit->env, index, 2, "env");
@@ -911,7 +912,7 @@ int exec_varassign(jit_t * jit, ast_t * ast)
         } else /* AST_ASSIGNMENT */
         {
             bind = find_symbol(p->child->sym); /* deal with environment vars */
-            if (bind->val != NULL)
+            if (bind->val != NULL) /* the variable is in an env */
             {
                 LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), bind->val };
                 bind->val = LLVMBuildInBoundsGEP(jit->builder, jit->env, index, 2, "env");
@@ -1133,24 +1134,8 @@ int exec_return(jit_t * jit, ast_t * ast)
         exec_ast(jit, p);
         if (p->type->typ == FN) /* convert to lambda */
         {
-            /* malloc space for lambda struct */
-            LLVMTypeRef str_ty = lambda_type(jit, p->type);
-            LLVMValueRef str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
-            
-            /* set function entry */
-            LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
-            LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
-            p->val = make_fn_lambda(jit, fn_entry, p->val, lambda_fn_type(jit, p->type));
-            LLVMBuildStore(jit->builder, p->val, fn_entry);
-            
-            /* set environment entry to NULL */
-            LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
-            LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
-            LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
-            p->val = str;
-
-            /* set lambda type */
-            p->type->typ = LAMBDA;
+            p->val = make_fn_lambda(jit, p->val, lambda_fn_type(jit, p->type));
+            fn_to_lambda(jit, p->type, &p->val, NULL, NULL);
         }
         
         LLVMBuildRet(jit->builder, p->val);
@@ -1204,14 +1189,14 @@ int exec_fnparams(jit_t * jit, ast_t * ast)
 
             LLVMValueRef param = LLVMGetParam(jit->function, i);
               
-            if (bind->val == NULL) 
+            if (bind->val == NULL) /* ordinary param */
             {
                LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(jit, p->type), p->sym->name);
                LLVMBuildStore(jit->builder, param, palloca);
         
                bind->val = palloca;
                p->val = palloca;
-            } else
+            } else /* param is in an env */
             {
                LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), bind->val };
                bind->val = LLVMBuildInBoundsGEP(jit->builder, jit->env, index, 2, "env");
@@ -1227,6 +1212,9 @@ int exec_fnparams(jit_t * jit, ast_t * ast)
     return 0;
 }
 
+/*
+   Jit a list of function parameters making allocas for them
+*/
 int exec_lambdaparams(jit_t * jit, ast_t * ast)
 {
     ast_t * p = ast->child;
@@ -1234,7 +1222,7 @@ int exec_lambdaparams(jit_t * jit, ast_t * ast)
 
     if (jit->bind_num != 0) /* we have an environment */
     {
-        while (p != NULL)
+        while (p != NULL) /* get env parameter */
         {
             i++;
             p = p->next;
@@ -1253,14 +1241,14 @@ int exec_lambdaparams(jit_t * jit, ast_t * ast)
 
         LLVMValueRef param = LLVMGetParam(jit->function, i);
             
-        if (bind->val == NULL) 
+        if (bind->val == NULL) /* we have an ordinary param */
         {
             LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(jit, p->type), p->sym->name);
             LLVMValueRef val = LLVMBuildStore(jit->builder, param, palloca);
             
             bind->val = palloca;
             p->val = palloca;
-        } else
+        } else /* param is in an env */
         {
             LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), bind->val };
             bind->val = LLVMBuildInBoundsGEP(jit->builder, jit->env, index, 2, "env");
@@ -1446,24 +1434,8 @@ int exec_lambda(jit_t * jit, ast_t * ast)
     exec_ast(jit, p);
     if (p->type->typ == FN) /* convert to lambda */
     {
-        /* malloc space for lambda struct */
-        LLVMTypeRef str_ty = lambda_type(jit, p->type);
-        LLVMValueRef str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
-            
-        /* set function entry */
-        LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
-        LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
-        p->val = make_fn_lambda(jit, fn_entry, p->val, lambda_fn_type(jit, p->type));
-        LLVMBuildStore(jit->builder, p->val, fn_entry);
-            
-        /* set environment entry to NULL */
-        LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
-        LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
-        LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
-        p->val = str;
-
-        /* set lambda type */
-        p->type->typ = LAMBDA;
+        p->val = make_fn_lambda(jit, p->val, lambda_fn_type(jit, p->type));
+        fn_to_lambda(jit, p->type, &p->val, NULL, NULL);
     }
 
     /* jit return */
@@ -1483,27 +1455,52 @@ int exec_lambda(jit_t * jit, ast_t * ast)
     jit->function = fn_save;    
     current_scope = scope_save;
     
-    /* malloc space for lambda struct */
-    LLVMTypeRef str_ty = lambda_type(jit, bind->type);
-    LLVMValueRef str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
-            
+    if (jit->bind_num == 0) /* no environment required */
+        fn_to_lambda(jit, bind->type, &bind->val, NULL, NULL);
+    else
+        fn_to_lambda(jit, bind->type, &bind->val, 
+           LLVMBuildPointerCast(jit->builder, jit->env, 
+              LLVMPointerType(LLVMInt8Type(), 0), "env"), NULL);
+ 
+    ast->val = bind->val;
+    
+    return 0;
+}
+
+/* 
+   Given an ast node whose val is a proper function
+   i) build a lambda type and malloc space for it
+   ii) set its function entry to the given function
+   iii) set its environment to the supplied LLVM pointer 
+        (if it is not NULL), otherwise set it to NULL
+   iv) change type to LAMBDA instead of FN
+*/
+void fn_to_lambda(jit_t * jit, type_t * type, 
+                  LLVMValueRef * val, LLVMValueRef env_ptr, LLVMValueRef str)
+{
+    if (str == NULL)
+    {
+        /* malloc space for lambda struct */
+        LLVMTypeRef str_ty = lambda_type(jit, type);
+        str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
+    }
+
     /* set function entry */
     LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
     LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
-    LLVMBuildStore(jit->builder, bind->val, fn_entry);
-      
+    LLVMBuildStore(jit->builder, *val, fn_entry);
+            
     /* set environment entry */
     LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
     LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
-    if (jit->bind_num == 0) /* no environment required */
+    if (env_ptr == NULL)
         LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
     else
-        LLVMBuildStore(jit->builder, LLVMBuildPointerCast(jit->builder, jit->env, LLVMPointerType(LLVMInt8Type(), 0), "env"), env);
-    
-    bind->val = str;
-    ast->val = str;
-    
-    return 0;
+        LLVMBuildStore(jit->builder, env_ptr, env);
+    *val = str;
+
+    /* set lambda type */
+    type->typ = LAMBDA;
 }
 
 /*
@@ -1527,27 +1524,13 @@ int exec_appl(jit_t * jit, ast_t * ast)
     for (i = 0; i < params; i++)
     {
         exec_ast(jit, p);
-        if (p->type->typ == FN) /* convert to lambda */
+        
+        if (p->type->typ == FN) /* convert function to lambda */
         {
-            /* malloc space for lambda struct */
-            LLVMTypeRef str_ty = lambda_type(jit, p->type);
-            LLVMValueRef str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
-            
-            /* set function entry */
-            LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
-            LLVMValueRef fn_entry = LLVMBuildInBoundsGEP(jit->builder, str, indices, 2, "fn");
-            p->val = make_fn_lambda(jit, fn_entry, p->val, lambda_fn_type(jit, p->type));
-            LLVMBuildStore(jit->builder, p->val, fn_entry);
-            
-            /* set environment entry to NULL */
-            LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
-            LLVMValueRef env = LLVMBuildInBoundsGEP(jit->builder, str, indices2, 2, "env");
-            LLVMBuildStore(jit->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0)), env);
-            p->val = str;
-
-            /* set lambda type */
-            p->type->typ = LAMBDA;
+            p->val = make_fn_lambda(jit, p->val, lambda_fn_type(jit, p->type));
+            fn_to_lambda(jit, p->type, &p->val, NULL, NULL);
         }
+
         args[i] = p->val;
         p = p->next;
     }
@@ -1581,6 +1564,9 @@ int exec_appl(jit_t * jit, ast_t * ast)
     return 0;
 }
 
+/*
+    Build an llvm struct type from bindings from the bind array 
+*/
 void make_env_s(jit_t * jit)
 {
     int i;
@@ -1599,6 +1585,11 @@ void make_env_s(jit_t * jit)
     }
 }
 
+/* 
+   Add binding to bind array. which signifies we need it in an 
+   environment struct
+   Realloc the bind array if at a power of 2 length
+*/
 void add_bind(jit_t * jit, bind_t * bind)
 {
     if (jit->bind_num == 0) /* do first allocation */
@@ -1612,6 +1603,10 @@ void add_bind(jit_t * jit, bind_t * bind)
     if (TRACE) printf("Added %s to environment\n", bind->sym->name);
 }
 
+/*
+   Add bindings to bind arrat for all local identifiers refered to 
+   out of their own scope
+*/
 void collect_idents(jit_t * jit, ast_t * ast)
 {
     bind_t * bind;
@@ -1648,6 +1643,10 @@ void collect_idents(jit_t * jit, ast_t * ast)
         collect_idents(jit, ast->next); /* then breadth */
 }
 
+/*
+   For each lambda in the ast, collect bindings in the bind array
+   for each local that needs to go into an environment struct
+*/
 void process_lambdas(jit_t * jit, ast_t * ast)
 {
     if (ast->tag == AST_LAMBDA) /* found a lambda */
@@ -1786,7 +1785,7 @@ void exec_root(jit_t * jit, ast_t * ast)
     /* Traverse the ast jit'ing everything, then run the jit'd code */
     START_EXEC;
          
-    process_lambdas(jit, ast);
+    process_lambdas(jit, ast); /* get any locals that need to go in an env */
     
     if (ast->tag == AST_FNDEC) /* save bind array for when function is jit'd */
     {
@@ -1794,15 +1793,17 @@ void exec_root(jit_t * jit, ast_t * ast)
         ast->bind_num = jit->bind_num;
         jit->bind_arr = NULL;
         jit->bind_num = 0;
-    } else
+    } else /* otherwise make the struct and allocate it now */
     {
         make_env_s(jit);
         if (jit->bind_num != 0)
             jit->env = LLVMBuildGCMalloc(jit, jit->env_s, "env");
     }
     
+    /* jit the ast */
     exec_ast(jit, ast);
     
+    /* print the resulting value */
     print_obj(jit, ast->type->typ, ast->val);
     
     END_EXEC;
