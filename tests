@@ -377,3 +377,34 @@ var a = lambda(n) { n + 1 };
 var b = lambda(n) { a(n) };
 b(10);
 
+tuples:
+=======
+var s = (2, 2);
+var t = (1, 2, ("string", 1.2), s, s, s);
+
+fn bill(n) {
+   var i = (n + 1, 1);
+   return lambda(s) { (i, s + 1) };
+}
+var k = bill(10);
+k(12);
+
+fn mulmod(a, b) {
+   var (a1, a2) = a, (b1, b2) = b;
+   return ((a1*b1) % a2, a2);
+}
+fn powmod(a, n) {
+   var (a1, a2) = a;
+   
+   var r = (1, a2), pow = a;
+   while (n != 0)
+   {
+       if ((n & 1) == 1) r = mulmod(r, pow);
+       n >>= 1;
+       if (n != 0) pow = mulmod(pow, pow);
+   }
+   
+   return r;
+}  
+powmod((2, 1024), 1234);
+
