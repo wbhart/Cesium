@@ -46,6 +46,7 @@ The following control flow statements are valid:
 The following compound expressions are valid:
 
 1) if expr then expr1 else expr2
+2) (expr1, expr2, ...) // tuples whose elements can have arbitrary types 
 
 Functions and applications are as follows:
 
@@ -58,6 +59,10 @@ Anonymous functions (closures) are expressions which can be defined as:
 2) lambda(a, b, c) expr
 
 Beware that as they are expressions, a statement ending in a lambda must be terminated by a semicolon __even if it already ends in a semicolon__.
+
+One can assign to tuples:
+
+var (i, (j, k)) = (1, (2, 3));
 
 The file "tests" gives a lot of examples of things you can (and can't) do.
 
