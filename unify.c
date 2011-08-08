@@ -78,7 +78,7 @@ void type_subst_type(type_t ** tin, type_rel_t * rel)
             type_subst_type(t->param + i, rel);
         if (t->ret != NULL)
             type_subst_type(&(t->ret), rel);
-    } else if (t->typ == TUPLE)
+    } else if (t->typ == TUPLE || t->typ == DATATYPE)
     {
         for (i = 0; i < t->arity; i++)
             type_subst_type(t->param + i, rel);
@@ -117,7 +117,7 @@ void ass_subst(type_rel_t * rels, type_rel_t * rel)
 
 void unify(type_rel_t * rels, type_rel_t * ass)
 {
-    int i;
+    int i, j;
     
     while (rel_stack != NULL)
     {
@@ -146,6 +146,47 @@ void unify(type_rel_t * rels, type_rel_t * ass)
                 exception("Type mismatch: tuple type not matched!\n");
             for (i = 0; i < rel->t1->arity; i++)
                 push_type_rel(rel->t1->param[i], rel->t2->param[i]);
+        }
+        else if (rel->t1->typ == DATATYPE)
+        {
+            if (rel->t2->typ != DATATYPE)
+                exception("Type mismatch: data type not matched!\n");
+            if (rel->t1->sym != NULL && rel->t2->sym != NULL) /* comparing two full datatypes */
+            {
+                if (rel->t1->arity != rel->t2->arity || rel->t1->sym != rel->t2->sym)
+                    exception("Type mismatch: data type not matched!\n");
+                for (i = 0; i < rel->t1->arity; i++)
+                    push_type_rel(rel->t1->param[i], rel->t2->param[i]);
+            } else /* one of the data types is not full */
+            {
+                if (rel->t1->sym == NULL) /* switch order */
+                    push_type_rel(rel->t2, rel->t1);
+                else /* compare partial datatype with full */
+                {
+                    for (i = 0; i < rel->t1->arity; i++)
+                        if (rel->t1->slot[i] == rel->t2->slot[0])
+                            break;
+                    if (i == rel->t1->arity) /* slot was not found */
+                        exception("Nonexistent slot!\n");
+                    /* check type of slot is right */
+                    push_type_rel(rel->t1->param[i], rel->t2->param[0]);
+
+                    /* update partial type */
+                    type_t * t = rel->t2->param[0];
+                    rel->t2->param = (type_t **) GC_MALLOC(rel->t1->arity*sizeof(type_t *));
+                    rel->t2->slot = (sym_t **) GC_MALLOC(rel->t1->arity*sizeof(sym_t *));
+                    for (j = 0; j < rel->t1->arity; j++)
+                    {
+                        rel->t2->param[j] = rel->t1->param[j]; 
+                        rel->t2->slot[j] = rel->t1->slot[j]; 
+                    }
+                    rel->t2->sym = rel->t1->sym;
+                    rel->t2->arity = rel->t1->arity;
+
+                    /* restore partial type for slot */
+                    rel->t2->param[i] = t; 
+                }
+            }
         }
         else if (rel->t1->typ != rel->t2->typ)
            exception("Type mismatch!\n");
@@ -210,6 +251,7 @@ void annotate_ast(ast_t * a)
     type_t ** param;
     bind_t * bind;
     sym_t * sym;
+    sym_t ** slot;
     int count, i;
 
     switch (a->tag)
@@ -532,14 +574,14 @@ void annotate_ast(ast_t * a)
             id->type = bind->type;
             id->bind = bind;
         } else
-           exception("Unknown function\n");
+           exception("Unknown function or datatype\n");
 
         /* count arguments */
         p = id->next;
         count = ast_list_length(p);
         
         /* the function may be passed via a parameter whose type is a typevar */
-        if (id->type->typ != FN && id->type->typ != LAMBDA) 
+        if (id->type->typ != FN && id->type->typ != LAMBDA && id->type->typ != DATATYPE) 
         {
             /* build appropriate function type */
             param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
@@ -552,7 +594,12 @@ void annotate_ast(ast_t * a)
             push_type_rel(id->type, fn_ty);
             id->type = fn_ty;
         } else if (count != id->type->arity) /* check number of parameters */
-            exception("Wrong number of parameters in function\n"); 
+        {
+            if (id->type->typ == FN || id->type->typ == LAMBDA)
+                exception("Wrong number of parameters in function\n");
+            else /* DATATYPE */
+                exception("Wrong number of parameters in type constructor\n");
+        }
 
         /* get parameter types */
         for (i = 0; i < count; i++)
@@ -566,7 +613,10 @@ void annotate_ast(ast_t * a)
         }
 
         /* get return types */
-        a->type = id->type->ret;
+        if (id->type->typ == DATATYPE)
+            a->type = id->type;
+        else /* FN or LAMBDA */
+            a->type = id->type->ret;
         break;
     case AST_TUPLE:
         /* count parameters */
@@ -588,6 +638,55 @@ void annotate_ast(ast_t * a)
         }
             
         a->type = tuple_type(count, param);
+        break;
+    case AST_DATATYPE:
+        /* count parameters */
+        id = a->child;
+        p = id->next;
+        count = ast_list_length(p);
+        
+        current_scope = a->env;
+        
+        /* build appropriate data type */
+        param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
+        slot = (sym_t **) GC_MALLOC(count*sizeof(sym_t *));
+        
+        /* get parameter types */
+        for (i = 0; i < count; i++)
+        {
+            p->type = new_typevar();
+            param[i] = p->type;
+            slot[i] = p->sym;
+            p = p->next;
+        }
+            
+        /* make binding */
+        id->type = data_type(count, param, id->sym, slot);
+        bind = bind_datatype(id->sym, id->type, a);
+
+        a->type = id->type;
+        break;
+    case AST_SLOT:
+        id = a->child;
+        p = id->next;
+        if (a->type == NULL) /* we haven't got a type so add typevar */
+            a->type = new_typevar();
+
+        /* make data type */
+        param = (type_t **) GC_MALLOC(sizeof(type_t *));
+        slot = (sym_t **) GC_MALLOC(sizeof(sym_t *));
+        param[0] = a->type;
+        slot[0] = p->sym;
+        id->type = data_type(1, param, NULL, slot);
+
+        /* recurse if we have a slot of a slot */
+        if (id->tag == AST_IDENT) 
+        {
+            b = find_symbol(id->sym);
+            if (b != NULL && b->initialised)
+                push_type_rel(b->type, id->type);
+        }
+        annotate_ast(id);
         break;
     }
 }

@@ -200,6 +200,7 @@ void print_obj(jit_t * jit, type_t * type, LLVMValueRef obj)
          break;
       case FN:
       case LAMBDA:
+      case DATATYPE:
       case NIL:
          llvm_printf(jit, "%s", jit->nil_str);
          break;
@@ -401,7 +402,7 @@ LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type)
         return LLVMPointerType(LLVMFunctionType(ret, args, params, 0), 0);
     } else if (type->typ == LAMBDA)
         return LLVMPointerType(lambda_type(jit, type), 0);
-    else if (type->typ == TUPLE)
+    else if (type->typ == TUPLE || type->typ == DATATYPE)
         return LLVMPointerType(tup_type(jit, type), 0);
     else if (type->typ == TYPEVAR)
         jit_exception(jit, "Unable to infer types\n");
@@ -817,6 +818,9 @@ LLVMValueRef make_fn_lambda(jit_t * jit,
 */
 int exec_ident(jit_t * jit, ast_t * ast)
 {
+    if (ast->tag == AST_SLOT) /* deal specially with slots */
+        return exec_slot(jit, ast);
+
     bind_t * bind = ast->bind;
 
     if (bind->val != NULL) /* we've already got a value and thus a type */
@@ -827,15 +831,18 @@ int exec_ident(jit_t * jit, ast_t * ast)
         bind->type = ast->type;
     }
     
+    /* if the id is a datatype constructor we do nothing */
+    if (ast->type->typ == DATATYPE && bind->val == NULL)
+        return 0;
     /* if it's not an LLVM function just load the value */
-    if ((ast->type->typ != FN && ast->type->typ != LAMBDA) || bind->ast == NULL)
+    else if ((ast->type->typ != FN && ast->type->typ != LAMBDA) || bind->ast == NULL)
         ast->val = LLVMBuildLoad(jit->builder, bind->val, bind->sym->name);
     else if (bind->val != NULL) /* if the function has been jit'd, load that */
         ast->val = bind->val;
     else if (ast->type->typ == FN || ast->type->typ == LAMBDA)/* jit the fn, update the binding and load it */
     {
-         exec_fndef(jit, bind->ast);
-         ast->val = bind->val;
+        exec_fndef(jit, bind->ast);
+        ast->val = bind->val;
     }
     
     return 0;
@@ -853,7 +860,7 @@ int exec_decl(jit_t * jit, ast_t * ast)
     if (bind->type->typ != TYPEVAR) /* if we now know what it is */
     {
         LLVMTypeRef type = type_to_llvm(jit, bind->type); /* convert to llvm type */
-            
+        
         if (scope_is_global(bind)) /* variable is global */
         {
             bind->val = LLVMAddGlobal(jit->module, type, bind->sym->name);
@@ -869,10 +876,42 @@ int exec_decl(jit_t * jit, ast_t * ast)
 }
 
 /*
+   Jit a slot access
+*/
+int exec_lslot(jit_t * jit, ast_t * ast)
+{
+    ast_t * id = ast->child;
+    ast_t * p = id->next;
+    int i, params = id->type->arity;
+    
+    if (ast->sym == NULL) /* need some kind of name */
+        ast->sym = sym_lookup("none");
+    
+    exec_ident(jit, id);
+    
+    for (i = 0; i < params; i++)
+    {
+        if (id->type->slot[i] == p->sym)
+            break;
+    }
+    
+    /* get slot from datatype */
+    LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), i, 0) };
+    ast->val = LLVMBuildInBoundsGEP(jit->builder, id->val, indices, 2, p->sym->name);
+    
+    ast->type = id->type->param[i];
+    
+    return 0;
+}
+
+/*
    Find identifier binding and load the place corresponding to it (lvalue)
 */
 int exec_place(jit_t * jit, ast_t * ast)
 {
+    if (ast->tag == AST_SLOT) /* deal specially with slots */
+        return exec_lslot(jit, ast);
+    
     if (ast->val == NULL) /* we haven't already loaded it */
     {
         bind_t * bind = ast->bind;
@@ -884,7 +923,7 @@ int exec_place(jit_t * jit, ast_t * ast)
 
         if (bind->val == NULL) /* we still haven't jit'd it */  
             exec_decl(jit, ast);
-
+        
         ast->type = bind->type; /* load particulars from binding */
         ast->val = bind->val;
     }
@@ -899,8 +938,9 @@ int exec_assign_id(jit_t * jit, ast_t * id, type_t * type, LLVMValueRef val)
     if (id->val != NULL) 
         allocated = 1; /* lambda struct has already been allocated */
     
+    /* get place */
     exec_place(jit, id);
-        
+    
     /* convert function to lambda */
     if (id->type->typ == LAMBDA && type->typ == FN)
     {
@@ -923,7 +963,8 @@ int exec_assign_id(jit_t * jit, ast_t * id, type_t * type, LLVMValueRef val)
     } else /* just do the store */
         LLVMBuildStore(jit->builder, val, id->val);
     
-    id->bind->initialised = 1; /* mark it as initialised */
+    if (id->bind != NULL) /* slots don't have a bind */
+        id->bind->initialised = 1; /* mark it as initialised */
 }
 
 int exec_assign_tuple(jit_t * jit, ast_t * t1, type_t * type, LLVMValueRef val)
@@ -1032,7 +1073,7 @@ int exec_varassign(jit_t * jit, ast_t * ast)
                 exec_varassign_tuple(jit, id);
             else /* we have an identifier */
                 exec_varassign_id(jit, id);
-
+            
             exec_assignment(jit, p); /* combined declaration and assignment */
         }
 
@@ -1265,14 +1306,18 @@ void fill_in_types(ast_t * ast)
     if (ast->env != NULL)
         current_scope = ast->env;
     
-    subst_type(&ast->type); /* fill in the type at this level*/
+    if (ast->type != NULL) /* slots for example don't have types */
+        subst_type(&ast->type); /* fill in the type at this level*/
     
     if (ast->tag == AST_IDENT) /* update identifier binding */
     {
         bind_t * bind = find_symbol(ast->sym);
         
-        if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
-            subst_type(&bind->type); /* fill in the type */        
+        if (bind != NULL) /* slots for example don't have types */
+        {
+            if (bind->type->typ == TYPEVAR) /* we don't know what type it is */
+                subst_type(&bind->type); /* fill in the type */
+        }
     }
     if (ast->child != NULL) /* depth first */
         fill_in_types(ast->child);
@@ -1382,6 +1427,16 @@ int exec_lambdaparams(jit_t * jit, ast_t * ast)
 int exec_fndec(jit_t * jit, ast_t * ast)
 {
     fill_in_types(ast); /* just fill in all the types we've inferred */
+      
+    return 0;
+}
+
+/*
+   Jit a function declaration
+*/
+int exec_datatype(jit_t * jit, ast_t * ast)
+{
+    /* can't do anything until we know the types */
       
     return 0;
 }
@@ -1617,15 +1672,68 @@ void fn_to_lambda(jit_t * jit, type_t * type,
 }
 
 /*
+   Jit a type constructor
+*/
+int exec_typeconstr(jit_t * jit, ast_t * ast, LLVMValueRef * args)
+{
+    ast_t * id = ast->child;
+    int i, params = id->type->arity;
+    
+    LLVMTypeRef str_ty = tup_type(jit, id->type);
+    ast->val = LLVMBuildGCMalloc(jit, str_ty, id->sym->name);
+    ast->type = id->type;
+    
+    for (i = 0; i < params; i++)
+    {
+        /* insert value into datatype */
+        LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), i, 0) };
+        LLVMValueRef entry = LLVMBuildInBoundsGEP(jit->builder, ast->val, indices, 2, id->sym->name);
+        LLVMBuildStore(jit->builder, args[i], entry);
+    }
+   
+    return 0;
+}
+
+/*
+   Jit a slot access
+*/
+int exec_slot(jit_t * jit, ast_t * ast)
+{
+    ast_t * id = ast->child;
+    ast_t * p = id->next;
+    int i, params = id->type->arity;
+    
+    if (ast->sym == NULL) /* need some kind of name */
+        ast->sym = sym_lookup("none");
+    
+    exec_ast(jit, id);
+
+    for (i = 0; i < params; i++)
+    {
+        if (id->type->slot[i] == p->sym)
+            break;
+    }
+    
+    /* get slot from datatype */
+    LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), i, 0) };
+    LLVMValueRef entry = LLVMBuildInBoundsGEP(jit->builder, id->val, indices, 2, p->sym->name);
+    ast->val = LLVMBuildLoad(jit->builder, entry, p->sym->name);
+    
+    ast->type = id->type->param[i];
+   
+    return 0;
+}
+
+/*
    Jit a function application
 */
 int exec_appl(jit_t * jit, ast_t * ast)
 {
     ast_t * fn = ast->child;
     ast_t * p;
-    int params, i;
+    int i, params;
 
-    /* load function */
+    /* load function or type constructor */
     exec_ident(jit, fn);
     
     params = fn->type->arity;
@@ -1647,10 +1755,12 @@ int exec_appl(jit_t * jit, ast_t * ast)
         args[i] = p->val;
         p = p->next;
     }
-        
+    
     /* call function */
     if (fn->type->typ == FN)
         ast->val = LLVMBuildCall(jit->builder, fn->val, args, params, "");
+    else if (fn->type->typ == DATATYPE)
+        return exec_typeconstr(jit, ast, args);
     else /* lambda */
     {
         /* load struct */
@@ -1923,6 +2033,10 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_appl(jit, ast);
     case AST_TUPLE:
         return exec_tuple(jit, ast);
+    case AST_DATATYPE:
+        return exec_datatype(jit, ast);
+    case AST_SLOT:
+        return exec_slot(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

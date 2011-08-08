@@ -408,3 +408,23 @@ fn powmod(a, n) {
 }  
 powmod((2, 1024), 1234);
 
+datatypes and slots:
+====================
+
+datatype bill(a, b, c);
+var s = bill(1, 2, 3);
+fn k(n) { return n.a; }
+k(s);
+s.a;
+++s.a;
+s.a++;
+s.a += 3;
+
+datatype bill(a, b, c);
+var s = bill(1, 2, 3);
+datatype bill2(a, b, c);
+var t = bill2("hello", s, 1.2);
+t.b.b = 4;
+fn k(n) { return n.b.b; }
+k(t);
+

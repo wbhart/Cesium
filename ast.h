@@ -36,6 +36,7 @@ typedef enum {
    AST_LAMBDA, AST_EXPRBLOCK,
    AST_IFEXPR,
    AST_TUPLE, AST_LTUPLE,
+   AST_DATATYPE, AST_SLOT,
    AST_NIL
 } tag_t;
 

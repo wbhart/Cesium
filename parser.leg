@@ -29,6 +29,7 @@ start         = Spacing r:TopStatement { root = r; }
 TopStatement  = Symtab ';' { print_sym_tab(); }
                  | FnDec
                  | VarStmt
+                 | DatatypeStmt
                  | Statement
 Statement     = Spacing IfStmt
                  | Spacing WhileStmt
@@ -52,6 +53,21 @@ VarStmt       = Var r:VarAssign
               {
                  r = ast_reverse(r);
                  $$ = ast_unary(r, AST_VARASSIGN);
+              }
+TypeList      = r:Identifier
+                 ( Comma s:Identifier
+              {
+                 s->next = r;
+                 r = s;
+              }
+                 )*
+              {
+                 $$ = ast_reverse(r);
+              }
+DatatypeStmt  = Datatype i:Identifier LParen r:TypeList RParen ';'
+              {
+                 $$ = ast_stmt2(i, r, AST_DATATYPE);
+                 $$->env = current_scope;
               }
 IfStmt        = ( If LParen e:Expression RParen s1:Statement Spacing Else s2:Statement
               { 
@@ -116,7 +132,7 @@ FnDec         = Fn i:Identifier { scope_up(); } p:ParamList  LBrace b:Block RBra
               }
 
 VarAssign     = Assignment | Identifier
-Place         = r:Identifier { r->tag = AST_LVALUE; }
+Place         = ( r:Identifier { r->tag = AST_LVALUE; } )
               | LParen r:Place 
                 ( Comma s:Place 
               { 
@@ -129,6 +145,11 @@ Place         = r:Identifier { r->tag = AST_LVALUE; }
                  $$ = ast_unary(r, AST_LTUPLE);
               }
 Assignment    = r:Place Equals s:AssignExp
+              {
+                  r->next = s;
+                  $$ = ast_unary(r, AST_ASSIGNMENT);
+              }
+SlotAssign    = r:Slot Equals s:AssignExp
               {
                   r->next = s;
                   $$ = ast_unary(r, AST_ASSIGNMENT);
@@ -146,18 +167,20 @@ LambdaExp     = Lambda { scope_up(); } p:ParamList LBrace e:ExprBlock RBrace Spa
                   scope_down();
               }
 Expression    = AssignExp
-AssignExp     = Assignment
+SimplePlace   = Slot | Identifier
+AssignExp     = SlotAssign
+                 | Assignment
                  | LambdaExp
-                 | ( r:Identifier o:PlusEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
-                 | ( r:Identifier o:MinusEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
-                 | ( r:Identifier o:TimesEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
-                 | ( r:Identifier o:DivEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
-                 | ( r:Identifier o:ModEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
-                 | ( r:Identifier o:AndEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
-                 | ( r:Identifier o:OrEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
-                 | ( r:Identifier o:XorEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
-                 | ( r:Identifier o:RshEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
-                 | ( r:Identifier o:LshEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:PlusEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:MinusEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:TimesEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:DivEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:ModEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:AndEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:OrEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:XorEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:RshEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
+                 | ( r:SimplePlace o:LshEQ s:AssignExp { $$ = ast_binary(r, s, o); } )
                  | Infix100
 Infix100      = ( r:Infix90 ( o:LogOr 
                   s:Infix90 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
@@ -179,8 +202,8 @@ Infix20       = ( r:Infix10 ( ( o:Plus | o:Minus )
                   s:Infix10 { r = ast_binary(r, s, o); } )* ) { $$ = r; }
 Infix10       = ( r:UnaryExp ( ( o:Times | o:Div | o:Mod ) 
                   s: UnaryExp { r = ast_binary(r, s, o); } )* ) { $$ = r; }
-UnaryExp      = ( Incr s:Identifier { $$ = ast_unary(s, AST_PRE_INC); } ) 
-                 | ( Decr s:Identifier { $$ = ast_unary(s, AST_PRE_DEC); } ) 
+UnaryExp      = ( Incr s:SimplePlace { $$ = ast_unary(s, AST_PRE_INC); } ) 
+                 | ( Decr s:SimplePlace { $$ = ast_unary(s, AST_PRE_DEC); } ) 
                  | ( Plus UnaryExp ) 
                  | ( Minus s:UnaryExp { $$ = ast_unary(s, AST_UNMINUS); } ) 
                  | ( LogNot s:UnaryExp { $$ = ast_unary(s, AST_LOGNOT); } ) 
@@ -196,8 +219,8 @@ ArgList       = LParen RParen { $$ = ast_stmt0(AST_NIL); }
               { 
                  $$ = ast_reverse(r);
               }
-PostfixExp    = ( r:Identifier Incr ) { $$ = ast_unary(r, AST_POST_INC); }
-                 | ( r:Identifier Decr ) { $$ = ast_unary(r, AST_POST_DEC); }
+PostfixExp    = ( r:SimplePlace Incr ) { $$ = ast_unary(r, AST_POST_INC); }
+                 | ( r:SimplePlace Decr ) { $$ = ast_unary(r, AST_POST_DEC); }
                  | r:Identifier s:ArgList { $$ = ast_stmt2(r, s, AST_APPL); }
                  | Primary
 IfExpr        = If c:Expression Then e1:Expression Else e2:Expression
@@ -215,7 +238,15 @@ TupleExpr     = LParen r:Expression
                  r = ast_reverse(r);
                  $$ = ast_unary(r, AST_TUPLE);
               }
-Primary       = ( IfExpr | Boolean | Identifier | Double | IntConst | String 
+Slot          = s:Identifier ( Dot | r:Identifier 
+              {
+                  s = ast_stmt2(s, r, AST_SLOT);
+              } 
+                 )+
+              {
+                 $$ = s;
+              }
+Primary       = ( IfExpr | Boolean | Slot | Identifier | Double | IntConst | String 
                  | ( LParen Expression RParen ) )
                  | TupleExpr
 
@@ -232,9 +263,10 @@ Else          = 'else' Spacing
 While         = 'while' Spacing
 Break         = 'break' Spacing
 Lambda        = 'lambda' Spacing
+Datatype      = 'datatype' Spacing
 Symtab        = 'symtab' Spacing
 Comma         = ',' Spacing
-Reserved      = Var | If | Then | Else | While | Break | Lambda | Return | Fn | Symtab
+Reserved      = Var | If | Then | Else | While | Break | Lambda | Datatype | Return | Fn | Symtab
 Identifier    = !Reserved < IdentStart IdentCont* > Spacing
               {
                  sym_t * sym = sym_lookup(yytext);
@@ -268,6 +300,7 @@ LParen        = '(' Spacing
 RParen        = ')' Spacing
 LBrace        = '{' Spacing
 RBrace        = Spacing '}'
+Dot           = '.' Spacing
 Incr          = '++' Spacing
 Decr          = '--' Spacing
 Plus          = '+' Spacing { $$ = op_plus; }

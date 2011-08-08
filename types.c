@@ -63,6 +63,26 @@ type_t * tuple_type(int num, type_t ** param)
    return t;
 }
 
+type_t * data_type(int num, type_t ** param, sym_t * sym, sym_t ** slot)
+{
+   type_t * t = (type_t *) GC_MALLOC(sizeof(type_t));
+   t->typ = DATATYPE;
+   t->param = (type_t **) GC_MALLOC(sizeof(type_t *)*num);
+   t->slot = (sym_t **) GC_MALLOC(sizeof(sym_t *)*num);
+   t->arity = num;
+
+   int i;
+   for (i = 0; i < num; i++)
+   {
+       t->param[i] = param[i];
+       t->slot[i] = slot[i];
+   }
+   
+   t->sym = sym;
+
+   return t;
+}
+
 /* convert to a lambda type */
 type_t * fn_to_lambda_type(type_t * type)
 {
@@ -137,6 +157,22 @@ void print_type(type_t * t)
         }
         print_type(t->param[i]);
         printf(")");
+        break;
+    case DATATYPE:
+        if (t->sym == NULL)
+            printf("datatype(NULL)");
+        else
+        {
+            printf("%s", t->sym->name);
+            printf("(");
+            for (i = 0; i < t->arity - 1; i++)
+            {
+                print_type(t->param[i]);
+                printf(", ");
+            }
+            print_type(t->param[i]);
+            printf(")");  
+        }
         break;
     case TYPEVAR:
         printf("T%ld", t->arity);

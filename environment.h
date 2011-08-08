@@ -53,6 +53,8 @@ bind_t * bind_symbol(sym_t * sym, type_t * type, LLVMValueRef val);
 
 bind_t * bind_lambda(sym_t * sym, type_t * type, ast_t * ast);
 
+bind_t * bind_datatype(sym_t * sym, type_t * type, ast_t * ast);
+
 bind_t * find_symbol(sym_t * sym);
 
 bind_t * find_symbol_in_scope(sym_t * sym);

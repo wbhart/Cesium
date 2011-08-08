@@ -125,6 +125,18 @@ bind_t * bind_lambda(sym_t * sym, type_t * type, ast_t * ast)
    return b;
 }
 
+bind_t * bind_datatype(sym_t * sym, type_t * type, ast_t * ast)
+{
+   bind_t * scope = current_scope->scope;
+   bind_t * b = (bind_t *) GC_MALLOC(sizeof(bind_t));
+   b->sym = sym;
+   b->type = type;
+   b->ast = ast;
+   b->next = scope;
+   current_scope->scope = b;
+   return b;
+}
+
 bind_t * find_symbol(sym_t * sym)
 {
    env_t * s = current_scope;

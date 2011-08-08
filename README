@@ -64,6 +64,12 @@ One can assign to tuples:
 
 var (i, (j, k)) = (1, (2, 3));
 
+To define a new datatype:
+
+datatype mytype(a, b, c);
+var s = mytype(1, 2, 3);
+s.a += 4;
+
 The file "tests" gives a lot of examples of things you can (and can't) do.
 
 Note there are no typeclass checks at the moment. Things like "string"+"more"; typecheck fine, but then just crash. This will be fixed eventually.

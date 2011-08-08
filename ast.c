@@ -302,7 +302,7 @@ void ast_print(ast_t * a, int indent)
     {
     case AST_LVALUE:
     case AST_IDENT:
-        printf("ident(%s)", a->sym->name);
+        printf("ident(%s)", a->sym->name); 
         ast_print_type(a);
         printf("\n");
         break;
@@ -487,6 +487,25 @@ void ast_print(ast_t * a, int indent)
             ast_print(t, indent + 3);
             t = t->next;
         }
+        break;
+    case AST_DATATYPE:
+        printf("datatype"); 
+        ast_print_type(a);
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        t = a->child->next;
+        while (t != NULL)
+        {
+            ast_print(t, indent + 3);
+            t = t->next;
+        }
+        break;
+    case AST_SLOT:
+        printf("slot"); 
+        ast_print_type(a);
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        ast_print(a->child->next, indent + 3);
         break;
     default:
         printf("nil\n");

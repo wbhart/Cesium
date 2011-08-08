@@ -1,13 +1,16 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#include "symbol.h"
+
 #ifdef __cplusplus
  extern "C" {
 #endif
 
 typedef enum
 {
-   NIL, UNKNOWN, BOOL, INT, DOUBLE, STRING, CHAR, FN, LAMBDA, ARRAY, TUPLE, TYPEVAR
+   NIL, UNKNOWN, BOOL, INT, DOUBLE, STRING, CHAR, 
+   FN, LAMBDA, ARRAY, TUPLE, DATATYPE, TYPEVAR
 } typ_t;
 
 typedef struct type_t
@@ -16,6 +19,8 @@ typedef struct type_t
    int arity;
    struct type_t ** param;
    struct type_t * ret;
+   struct sym_t ** slot;
+   struct sym_t * sym;
 } type_t;
 
 extern type_t * t_nil;
@@ -34,6 +39,8 @@ int type_equal(type_t * t1, type_t * t2);
 type_t * fn_type(type_t * ret, int num, type_t ** param);
 
 type_t * tuple_type(int num, type_t ** param);
+
+type_t * data_type(int num, type_t ** param, sym_t * sym, sym_t ** slots);
 
 type_t * fn_to_lambda_type(type_t * type);
 

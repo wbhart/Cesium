@@ -63,6 +63,8 @@ void fn_to_lambda(jit_t * jit, type_t * type,  LLVMValueRef * val,
 
 void make_env_s(jit_t * jit);
 
+int exec_slot(jit_t * jit, ast_t * ast);
+
 int exec_ast(jit_t * jit, ast_t * ast);
 
 void exec_root(jit_t * jit, ast_t * ast);
