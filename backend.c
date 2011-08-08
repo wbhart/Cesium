@@ -1869,11 +1869,13 @@ void collect_idents(jit_t * jit, ast_t * ast)
 {
     bind_t * bind;
     int i;
+    int child_only = 0;
 
     /* check if we are entering a new scope */
     if (ast->tag == AST_FNDEC || ast->tag == AST_LAMBDA || ast->tag == AST_BLOCK)
         current_scope = ast->env;
 
+child_process:
     if (ast->tag == AST_IDENT)
     {
         bind = find_symbol(ast->sym); /* only locals get put into lambda envs */
@@ -1889,6 +1891,16 @@ void collect_idents(jit_t * jit, ast_t * ast)
                     add_bind(jit, bind);
             }
         }
+    }
+
+    if (child_only)
+        return;
+
+    if (ast->tag == AST_SLOT) /* only process the id for a slot access */
+    {
+        ast = ast->child;
+        child_only = 1;
+        goto child_process;
     }
 
     if (ast->child != NULL && ast->tag != AST_PARAMS) /* don't process params */

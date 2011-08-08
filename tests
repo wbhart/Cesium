@@ -428,3 +428,11 @@ t.b.b = 4;
 fn k(n) { return n.b.b; }
 k(t);
 
+datatype bill(x, y);
+fn b(n) {
+   var s = bill(1, 2);
+   return lambda(m) { n + m + s.x };
+}
+var t = b(10);
+t(4);
+
