@@ -247,7 +247,7 @@ void annotate_ast(ast_t * a)
 {
     ast_t * t, * t2, * p, * id, * expr;
     bind_t * b;
-    type_t * retty;
+    type_t * retty, * ty;
     type_t ** param;
     bind_t * bind;
     sym_t * sym;
@@ -681,7 +681,8 @@ void annotate_ast(ast_t * a)
         slot = (sym_t **) GC_MALLOC(sizeof(sym_t *));
         param[0] = a->type;
         slot[0] = p->sym;
-        id->type = data_type(1, param, NULL, slot);
+        ty = data_type(1, param, NULL, slot);
+        id->type = ty;
 
         /* recurse if we have a slot of a slot */
         if (id->tag == AST_IDENT) 
@@ -691,6 +692,10 @@ void annotate_ast(ast_t * a)
                 push_type_rel(b->type, id->type);
         }
         annotate_ast(id);
+
+        /* join types up */
+        if (ty != id->type)
+            push_type_rel(ty, id->type);
         break;
     }
 }
