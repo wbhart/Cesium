@@ -568,13 +568,17 @@ void annotate_ast(ast_t * a)
         id = a->child;
 
         /* find function and get particulars */
-        bind = find_symbol(id->sym);
-        if (bind != NULL)
+        if (id->tag == AST_IDENT)
         {
-            id->type = bind->type;
-            id->bind = bind;
-        } else
-           exception("Unknown function or datatype\n");
+            bind = find_symbol(id->sym);
+            if (bind != NULL)
+            {
+                id->type = bind->type;
+                id->bind = bind;
+            } else
+                exception("Unknown function or datatype\n");
+        } else /* we may not have an identifier giving the function */
+            annotate_ast(id);
 
         /* count arguments */
         p = id->next;

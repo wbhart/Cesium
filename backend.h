@@ -58,7 +58,7 @@ int exec_fndef(jit_t * jit, ast_t * ast);
 
 int exec_lambda(jit_t * jit, ast_t * ast);
 
-void fn_to_lambda(jit_t * jit, type_t * type,  LLVMValueRef * val, 
+void fn_to_lambda(jit_t * jit, type_t ** type,  LLVMValueRef * val, 
                             LLVMValueRef env_ptr, LLVMValueRef str);
 
 void make_env_s(jit_t * jit);

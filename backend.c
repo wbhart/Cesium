@@ -887,7 +887,7 @@ int exec_lslot(jit_t * jit, ast_t * ast)
     if (ast->sym == NULL) /* need some kind of name */
         ast->sym = sym_lookup("none");
     
-    exec_ident(jit, id);
+    exec_ast(jit, id);
     
     for (i = 0; i < params; i++)
     {
@@ -949,7 +949,7 @@ int exec_assign_id(jit_t * jit, ast_t * id, type_t * type, LLVMValueRef val)
         /* malloc space for lambda struct */
         if (!allocated) /* if we didn't already allocate the struct for dest */
         {
-            fn_to_lambda(jit, id->type, &id->val, NULL, NULL);
+            fn_to_lambda(jit, &id->type, &id->val, NULL, NULL);
             
             /* place allocated struct into struct pointer */
             bind_t * bind = find_symbol(id->sym);
@@ -958,7 +958,7 @@ int exec_assign_id(jit_t * jit, ast_t * id, type_t * type, LLVMValueRef val)
         {
             /* get lambda struct */
             LLVMValueRef str = LLVMBuildLoad(jit->builder, id->val, "lambda_s");
-            fn_to_lambda(jit, id->type, &id->val, NULL, str);
+            fn_to_lambda(jit, &id->type, &id->val, NULL, str);
         }
     } else /* just do the store */
         LLVMBuildStore(jit->builder, val, id->val);
@@ -1008,7 +1008,7 @@ int exec_assignment(jit_t * jit, ast_t * ast)
     
     ast->val = expr->val;
     ast->type = expr->type;
-
+    
     return 0;
 }
 
@@ -1289,7 +1289,7 @@ int exec_return(jit_t * jit, ast_t * ast)
         if (p->type->typ == FN) /* convert to lambda */
         {
             p->val = make_fn_lambda(jit, p->val, lambda_fn_type(jit, p->type));
-            fn_to_lambda(jit, p->type, &p->val, NULL, NULL);
+            fn_to_lambda(jit, &p->type, &p->val, NULL, NULL);
         }
         
         LLVMBuildRet(jit->builder, p->val);
@@ -1603,7 +1603,7 @@ int exec_lambda(jit_t * jit, ast_t * ast)
     if (p->type->typ == FN) /* convert to lambda */
     {
         p->val = make_fn_lambda(jit, p->val, lambda_fn_type(jit, p->type));
-        fn_to_lambda(jit, p->type, &p->val, NULL, NULL);
+        fn_to_lambda(jit, &p->type, &p->val, NULL, NULL);
     }
 
     /* jit return */
@@ -1624,9 +1624,9 @@ int exec_lambda(jit_t * jit, ast_t * ast)
     current_scope = scope_save;
     
     if (jit->bind_num == 0) /* no environment required */
-        fn_to_lambda(jit, bind->type, &bind->val, NULL, NULL);
+        fn_to_lambda(jit, &bind->type, &bind->val, NULL, NULL);
     else
-        fn_to_lambda(jit, bind->type, &bind->val, 
+        fn_to_lambda(jit, &bind->type, &bind->val, 
            LLVMBuildPointerCast(jit->builder, jit->env, 
               LLVMPointerType(LLVMInt8Type(), 0), "env"), NULL);
  
@@ -1643,13 +1643,13 @@ int exec_lambda(jit_t * jit, ast_t * ast)
         (if it is not NULL), otherwise set it to NULL
    iv) change type to LAMBDA instead of FN
 */
-void fn_to_lambda(jit_t * jit, type_t * type, 
+void fn_to_lambda(jit_t * jit, type_t ** type, 
                   LLVMValueRef * val, LLVMValueRef env_ptr, LLVMValueRef str)
 {
     if (str == NULL)
     {
         /* malloc space for lambda struct */
-        LLVMTypeRef str_ty = lambda_type(jit, type);
+        LLVMTypeRef str_ty = lambda_type(jit, *type);
         str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
     }
 
@@ -1668,7 +1668,7 @@ void fn_to_lambda(jit_t * jit, type_t * type,
     *val = str;
 
     /* set lambda type */
-    type->typ = LAMBDA;
+    *type = fn_to_lambda_type(*type);
 }
 
 /*
@@ -1734,7 +1734,7 @@ int exec_appl(jit_t * jit, ast_t * ast)
     int i, params;
 
     /* load function or type constructor */
-    exec_ident(jit, fn);
+    exec_ast(jit, fn);
     
     params = fn->type->arity;
     LLVMValueRef * args = (LLVMValueRef *) /* one extra for env if lambda */
@@ -1749,7 +1749,7 @@ int exec_appl(jit_t * jit, ast_t * ast)
         if (p->type->typ == FN) /* convert function to lambda */
         {
             p->val = make_fn_lambda(jit, p->val, lambda_fn_type(jit, p->type));
-            fn_to_lambda(jit, p->type, &p->val, NULL, NULL);
+            fn_to_lambda(jit, &p->type, &p->val, NULL, NULL);
         }
 
         args[i] = p->val;
@@ -1808,7 +1808,7 @@ int exec_tuple(jit_t * jit, ast_t * ast)
         if (p->type->typ == FN) /* convert function to lambda */
         {
             p->val = make_fn_lambda(jit, p->val, lambda_fn_type(jit, p->type));
-            fn_to_lambda(jit, p->type, &p->val, NULL, NULL);
+            fn_to_lambda(jit, &p->type, &p->val, NULL, NULL);
         }
  
         /* insert value into tuple */

@@ -436,3 +436,23 @@ fn b(n) {
 var t = b(10);
 t(4);
 
+datatype type1(a, b, c);
+var s = type1(1, 2, 3);
+datatype type2(a, b, c);
+var t = type2("hello", s, 1.2);
+fn k(n) { return n.b; }
+k(t).b;
+
+fn bill(n) { return n + 1; }
+fn bill2() { return bill; }
+bill2()(10);
+datatype s(a, b, c);
+var i = s(1, bill, 3);
+i.b(10);
+
+datatype s(a, b, c);
+fn bill(n) {
+   return s(1, n, 2);
+}
+bill(4).b = 7;
+

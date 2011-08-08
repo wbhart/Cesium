@@ -149,7 +149,7 @@ Assignment    = r:Place Equals s:AssignExp
                   r->next = s;
                   $$ = ast_unary(r, AST_ASSIGNMENT);
               }
-SlotAssign    = r:Slot Equals s:AssignExp
+SlotAssign    = r:SlotOrAppl Equals s:AssignExp
               {
                   r->next = s;
                   $$ = ast_unary(r, AST_ASSIGNMENT);
@@ -167,7 +167,7 @@ LambdaExp     = Lambda { scope_up(); } p:ParamList LBrace e:ExprBlock RBrace Spa
                   scope_down();
               }
 Expression    = AssignExp
-SimplePlace   = Slot | Identifier
+SimplePlace   = SlotOrAppl | Identifier
 AssignExp     = SlotAssign
                  | Assignment
                  | LambdaExp
@@ -219,9 +219,16 @@ ArgList       = LParen RParen { $$ = ast_stmt0(AST_NIL); }
               { 
                  $$ = ast_reverse(r);
               }
+SlotOrAppl    = ( r:Identifier s:ArgList { r = ast_stmt2(r, s, AST_APPL); }
+                 | r:Identifier Dot s:Identifier { r = ast_stmt2(r, s, AST_SLOT); } ) 
+                ( s:ArgList { r = ast_stmt2(r, s, AST_APPL); } 
+                 | Dot s:Identifier { r = ast_stmt2(r, s, AST_SLOT); } )*
+              {
+                 $$ = r;
+              }
 PostfixExp    = ( r:SimplePlace Incr ) { $$ = ast_unary(r, AST_POST_INC); }
                  | ( r:SimplePlace Decr ) { $$ = ast_unary(r, AST_POST_DEC); }
-                 | r:Identifier s:ArgList { $$ = ast_stmt2(r, s, AST_APPL); }
+                 | SlotOrAppl
                  | Primary
 IfExpr        = If c:Expression Then e1:Expression Else e2:Expression
               { 
@@ -238,15 +245,7 @@ TupleExpr     = LParen r:Expression
                  r = ast_reverse(r);
                  $$ = ast_unary(r, AST_TUPLE);
               }
-Slot          = s:Identifier ( Dot | r:Identifier 
-              {
-                  s = ast_stmt2(s, r, AST_SLOT);
-              } 
-                 )+
-              {
-                 $$ = s;
-              }
-Primary       = ( IfExpr | Boolean | Slot | Identifier | Double | IntConst | String 
+Primary       = ( IfExpr | Boolean | Identifier | Double | IntConst | String 
                  | ( LParen Expression RParen ) )
                  | TupleExpr
 
