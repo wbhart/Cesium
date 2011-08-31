@@ -3,7 +3,9 @@ Cesium v 0.2
 
 To make, ensure that you have Boehm's GC and the latest LLVM installed on your machine.
 
-You may need to adjust some paths in the makefile.
+You may need to adjust some paths in the makefile and in cs_env.
+
+Type source cs_env.
 
 Now just type make.
 
