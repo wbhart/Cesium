@@ -3,6 +3,10 @@ Cesium v 0.2
 
 To make, ensure that you have Boehm's GC and the latest LLVM installed on your machine.
 
+If the greg-0.1 directory is empty you will need to fetch it separately from github. It can be found here:
+
+https://github.com/nddrylliog/greg
+
 You may need to adjust some paths in the makefile.
 
 Now just type make.
