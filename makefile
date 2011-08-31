@@ -6,7 +6,7 @@ all: parser.c symbol.o ast.o types.o unify.o environment.o backend.o cesium.c ex
 	g++ $(CS_FLAGS) $(CS_INC) $(CS_LIBS) cesium.c symbol.o ast.o types.o unify.o environment.o backend.o exception.o -lgc `/usr/local/bin/llvm-config --libs --cflags --ldflags core analysis executionengine jit interpreter native` -o cs
 
 parser.c: greg parser.leg
-	greg-0.4.3/greg parser.leg -o parser.c
+	greg-0.4.3/greg -o parser.c parser.leg
 
 symbol.o: symbol.h symbol.c
 	g++ -c $(CS_FLAGS) $(CS_INC) symbol.c -o symbol.o
@@ -33,8 +33,9 @@ greg:
 	$(MAKE) -C greg-0.4.3
 
 clean:
-	rm *.o
-	rm greg-0.4.3/*.o
-	rm cs
-	rm greg-0.4.3/greg
+	rm -f *.o
+	rm -f greg-0.4.3/*.o
+	rm -f cs
+	rm -f greg-0.4.3/greg
+	rm -f parser.c
 
