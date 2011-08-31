@@ -244,7 +244,6 @@ jit_t * llvm_init(void)
     LLVMAddJumpThreadingPass(jit->pass); 
     LLVMAddLICMPass(jit->pass); 
     LLVMAddLoopDeletionPass(jit->pass); 
-    LLVMAddLoopIdiomPass(jit->pass); 
     LLVMAddLoopRotatePass(jit->pass); 
     LLVMAddLoopUnrollPass(jit->pass); 
     LLVMAddLoopUnswitchPass(jit->pass);
@@ -252,7 +251,6 @@ jit_t * llvm_init(void)
     LLVMAddReassociatePass(jit->pass); 
     LLVMAddSCCPPass(jit->pass); 
     LLVMAddScalarReplAggregatesPass(jit->pass); 
-    LLVMAddScalarReplAggregatesPassSSA(jit->pass); 
     LLVMAddSimplifyLibCallsPass(jit->pass);
     LLVMAddTailCallEliminationPass(jit->pass); 
     LLVMAddDemoteMemoryToRegisterPass(jit->pass); /* */ 
