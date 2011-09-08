@@ -880,6 +880,32 @@ int exec_ident(jit_t * jit, ast_t * ast)
         bind->type = ast->type;
     }
     
+    if (ast->type->typ == ARRAY && ast->type->arity != 0)
+    {
+        LLVMTypeRef str_ty = arr_type(jit, ast->type);
+        LLVMValueRef val = LLVMBuildGCMalloc(jit, str_ty, "tuple_s", 0);
+
+        /* insert length into array struct */
+        LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
+        LLVMValueRef entry = LLVMBuildInBoundsGEP(jit->builder, val, indices, 2, "length");
+        LLVMBuildStore(jit->builder, LLVMConstInt(LLVMWordType(), ast->type->arity, 0), entry);
+    
+        /* create array */
+        int atomic = is_atomic(ast->type->ret);
+        LLVMValueRef arr = LLVMBuildGCArrayMalloc(jit, type_to_llvm(jit, ast->type->ret), LLVMConstInt(LLVMWordType(), (long) ast->type->arity, 0), "array", atomic);
+
+        LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+        entry = LLVMBuildInBoundsGEP(jit->builder, val, indices2, 2, "arr");
+        LLVMBuildStore(jit->builder, arr, entry);
+        
+        ast->type->arity = 0;
+        ast->bind->initialised = 0;
+
+        exec_place(jit, ast);
+        LLVMBuildStore(jit->builder, val, ast->val);
+        ast->bind->initialised = 1;
+    }
+
     /* if the id is a datatype constructor we do nothing */
     if (ast->type->typ == DATATYPE && bind->val == NULL)
         return 0;
@@ -1082,6 +1108,19 @@ int exec_assignment(jit_t * jit, ast_t * ast)
     
     exec_ast(jit, expr);
     
+    if (expr->type->typ == ARRAY && expr->type->arity != 0)
+    {
+        bind_t * bind = id->bind;
+        subst_type(&bind->type); /* fill in the type if known */
+        
+        id->type = bind->type; /* load particulars from binding */
+        
+        id->type->arity = expr->type->arity;
+        ast->type = expr->type;
+        
+        return 0;
+    }
+
     if (id->tag != AST_LTUPLE)
         exec_assign_id(jit, id, expr->type, expr->val);
     else
@@ -1929,12 +1968,24 @@ int exec_array(jit_t * jit, ast_t * ast)
 
     subst_type(&ast->type);
 
+    ast_t * p = ast->child;
+    
+    /* for global arrays whose type is not known just jit the length */
+    if (ast->type->ret->typ == TYPEVAR && current_scope->next == NULL)
+    {
+        subst_type(&p->type);
+        long r;
+        START_EXEC;
+        exec_ast(jit, p);
+        INT_EXEC(r, p->val);
+        ast->type->arity = (int) r;
+        return 0;
+    } else
+        exec_ast(jit, p);
+
     LLVMTypeRef str_ty = arr_type(jit, ast->type);
     ast->val = LLVMBuildGCMalloc(jit, str_ty, "tuple_s", 0);
 
-    ast_t * p = ast->child;
-    exec_ast(jit, p);
-        
     /* insert length into array struct */
     LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
     LLVMValueRef entry = LLVMBuildInBoundsGEP(jit->builder, ast->val, indices, 2, "length");

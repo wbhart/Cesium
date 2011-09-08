@@ -533,3 +533,24 @@ var s;
 var dat = bill2(s, len);
 bill(dat, len);
 
+var len = 1000000000;
+fn bill(a, n) {
+   var i = 0, s = 0;
+   while (i < n) {
+      s += a[i];
+      i++;
+   }
+   return s;
+}
+fn bill2(a, n) {
+   var i = 0;
+   while (i < n) {
+      a[i] = i;
+      i++;
+   }
+   return a;
+}
+var a = array(len);
+var dat = bill2(a, len);
+bill(dat, len);
+

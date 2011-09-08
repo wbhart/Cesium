@@ -102,6 +102,22 @@ void llvm_functions(jit_t * jit);
    jit->builder = __builder_save; \
    } while (0)
 
+/* execute code and return an integer */
+#define INT_EXEC(r, n) \
+   do { \
+   LLVMBuildRet(jit->builder, n); \
+   LLVMRunFunctionPassManager(jit->pass, jit->function); \
+   if (TRACE) \
+      LLVMDumpModule(jit->module); \
+   LLVMGenericValueRef __exec_args[] = {}; \
+   LLVMGenericValueRef __val = LLVMRunFunction(jit->engine, jit->function, 0, __exec_args); \
+   r = LLVMGenericValueToInt(__val, 1); \
+   LLVMDeleteFunction(jit->function); \
+   LLVMDisposeBuilder(jit->builder); \
+   jit->function = __function_save; \
+   jit->builder = __builder_save; \
+   } while (0)
+
 #ifdef __cplusplus
 }
 #endif
