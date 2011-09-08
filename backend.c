@@ -19,6 +19,7 @@
 
 #ifndef CS_MALLOC_NAME /* make it easy to turn off GC */
 #define CS_MALLOC_NAME "GC_malloc"
+#define CS_MALLOC_NAME2 "GC_malloc_atomic"
 #endif
 
 /* 
@@ -44,11 +45,18 @@ void llvm_functions(jit_t * jit)
    fntype = LLVMFunctionType(ret, args, 1, 0);
    fn = LLVMAddFunction(jit->module, "exit", fntype);
 
-   /* patch in the GC_MALLOC function */
+   /* patch in the GC_malloc function */
    args[0] = LLVMWordType();
    ret = LLVMPointerType(LLVMInt8Type(), 0);
    fntype = LLVMFunctionType(ret, args, 1, 0);
    fn = LLVMAddFunction(jit->module, CS_MALLOC_NAME, fntype);
+   LLVMAddFunctionAttr(fn, LLVMNoAliasAttribute);
+
+   /* patch in the GC_malloc_atomic function */
+   args[0] = LLVMWordType();
+   ret = LLVMPointerType(LLVMInt8Type(), 0);
+   fntype = LLVMFunctionType(ret, args, 1, 0);
+   fn = LLVMAddFunction(jit->module, CS_MALLOC_NAME2, fntype);
    LLVMAddFunctionAttr(fn, LLVMNoAliasAttribute);
 }
 
@@ -306,26 +314,40 @@ void llvm_cleanup(jit_t * jit)
     jit->false_str = NULL;
 }
 
+int is_atomic(type_t * type)
+{
+   typ_t typ = type->typ;
+   return (typ != ARRAY && typ != TUPLE && typ != DATATYPE && typ != FN && typ != LAMBDA);
+}
+
 /* 
    Jit a call to GC_malloc
 */
-LLVMValueRef LLVMBuildGCMalloc(jit_t * jit, LLVMTypeRef type, const char * name)
+LLVMValueRef LLVMBuildGCMalloc(jit_t * jit, LLVMTypeRef type, const char * name, int atomic)
 {
-    LLVMValueRef fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME);
+    LLVMValueRef fn;
+    if (atomic)
+        fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME2);
+    else
+        fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME);
     LLVMValueRef arg[1] = { LLVMSizeOf(type) };
-    LLVMValueRef gcmalloc = LLVMBuildCall(jit->builder, fn, arg, 1, "gc_malloc");
+    LLVMValueRef gcmalloc = LLVMBuildCall(jit->builder, fn, arg, 1, "malloc");
     return LLVMBuildPointerCast(jit->builder, gcmalloc, LLVMPointerType(type, 0), name);
 }
 
 /* 
    Jit a call to GC_malloc to create an array
 */
-LLVMValueRef LLVMBuildGCArrayMalloc(jit_t * jit, LLVMTypeRef type, LLVMValueRef num, const char * name)
+LLVMValueRef LLVMBuildGCArrayMalloc(jit_t * jit, LLVMTypeRef type, LLVMValueRef num, const char * name, int atomic)
 {
-    LLVMValueRef fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME);
+    LLVMValueRef fn;
+    if (atomic)
+        fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME2);
+    else
+        fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME);
     LLVMValueRef size = LLVMSizeOf(type);
     LLVMValueRef arg[1] = { LLVMBuildMul(jit->builder, num, size, "arr_size") };
-    LLVMValueRef gcmalloc = LLVMBuildCall(jit->builder, fn, arg, 1, "gc_malloc");
+    LLVMValueRef gcmalloc = LLVMBuildCall(jit->builder, fn, arg, 1, "malloc");
     return LLVMBuildPointerCast(jit->builder, gcmalloc, LLVMPointerType(type, 0), name);
 }
 
@@ -1539,6 +1561,20 @@ int exec_fndef(jit_t * jit, ast_t * ast)
     jit->function = LLVMAddFunction(jit->module, fn_name, fn_type);
     ast->val = jit->function;
 
+    type_t * t;
+    /* set nocapture on all structured params */
+    for (i = 0; i < params; i++)
+    {
+        t = ast->type->param[i];
+        if (t->typ == ARRAY || t->typ == TUPLE || t->typ == DATATYPE)
+            LLVMAddAttribute(LLVMGetParam(ast->val, i), LLVMNoCaptureAttribute);
+    }
+    
+    /* set nocapture on all structured return values */
+    t = ast->type->ret;
+    if (t->typ == ARRAY || t->typ == TUPLE || t->typ == DATATYPE)
+        LLVMAddFunctionAttr(ast->val, LLVMNoAliasAttribute);
+ 
     /* add the prototype to the symbol binding in case the function calls itself */
     bind_t * bind = find_symbol(fn->sym);
     bind->val = jit->function;
@@ -1557,7 +1593,7 @@ int exec_fndef(jit_t * jit, ast_t * ast)
        
     /* make environment malloc */
     if (jit->bind_num != 0)
-        jit->env = LLVMBuildGCMalloc(jit, jit->env_s, "env");
+        jit->env = LLVMBuildGCMalloc(jit, jit->env_s, "env", 0);
 
     /* make allocas for the function parameters */
     exec_fnparams(jit, fn->next);
@@ -1709,7 +1745,7 @@ void fn_to_lambda(jit_t * jit, type_t ** type,
     {
         /* malloc space for lambda struct */
         LLVMTypeRef str_ty = lambda_type(jit, *type);
-        str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s");
+        str = LLVMBuildGCMalloc(jit, str_ty, "lambda_s", 0);
     }
 
     /* set function entry */
@@ -1737,9 +1773,15 @@ int exec_typeconstr(jit_t * jit, ast_t * ast, LLVMValueRef * args)
 {
     ast_t * id = ast->child;
     int i, params = id->type->arity;
-    
+    int atomic = 1;
+
     LLVMTypeRef str_ty = tup_type(jit, id->type);
-    ast->val = LLVMBuildGCMalloc(jit, str_ty, id->sym->name);
+
+    /* determine whether fields are atomic */
+    for (i = 0; i < params; i++)
+        atomic &= is_atomic(id->type->param[i]);
+
+    ast->val = LLVMBuildGCMalloc(jit, str_ty, id->sym->name, atomic);
     ast->type = id->type;
     
     for (i = 0; i < params; i++)
@@ -1888,7 +1930,7 @@ int exec_array(jit_t * jit, ast_t * ast)
     subst_type(&ast->type);
 
     LLVMTypeRef str_ty = arr_type(jit, ast->type);
-    ast->val = LLVMBuildGCMalloc(jit, str_ty, "tuple_s");
+    ast->val = LLVMBuildGCMalloc(jit, str_ty, "tuple_s", 0);
 
     ast_t * p = ast->child;
     exec_ast(jit, p);
@@ -1899,7 +1941,8 @@ int exec_array(jit_t * jit, ast_t * ast)
     LLVMBuildStore(jit->builder, p->val, entry);
     
     /* create array */
-    LLVMValueRef arr = LLVMBuildGCArrayMalloc(jit, type_to_llvm(jit, ast->type->ret), p->val, "array");
+    int atomic = is_atomic(ast->type->ret);
+    LLVMValueRef arr = LLVMBuildGCArrayMalloc(jit, type_to_llvm(jit, ast->type->ret), p->val, "array", atomic);
 
     LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
     entry = LLVMBuildInBoundsGEP(jit->builder, ast->val, indices2, 2, "arr");
@@ -1915,11 +1958,17 @@ int exec_tuple(jit_t * jit, ast_t * ast)
 {
     int params = ast->type->arity;
     int i;
+    int atomic = 1;
 
     subst_type(&ast->type);
 
     LLVMTypeRef str_ty = tup_type(jit, ast->type);
-    ast->val = LLVMBuildGCMalloc(jit, str_ty, "tuple_s");
+
+    /* determine whether fields are atomic */
+    for (i = 0; i < params; i++)
+        atomic &= is_atomic(ast->type->param[i]);
+
+    ast->val = LLVMBuildGCMalloc(jit, str_ty, "tuple_s", atomic);
 
     ast_t * p = ast->child;
     for (i = 0; i < params; i++)
@@ -2198,7 +2247,7 @@ void exec_root(jit_t * jit, ast_t * ast)
     {
         make_env_s(jit);
         if (jit->bind_num != 0)
-            jit->env = LLVMBuildGCMalloc(jit, jit->env_s, "env");
+            jit->env = LLVMBuildGCMalloc(jit, jit->env_s, "env", 0);
     }
     
     /* jit the ast */
