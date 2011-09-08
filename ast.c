@@ -507,6 +507,19 @@ void ast_print(ast_t * a, int indent)
         ast_print(a->child, indent + 3);
         ast_print(a->child->next, indent + 3);
         break;
+    case AST_LOCATION:
+    case AST_LLOCATION:
+        printf("location"); 
+        ast_print_type(a);
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        break;
+    case AST_ARRAY:
+        printf("array"); 
+        ast_print_type(a);
+        printf("\n");
+        ast_print(a->child, indent + 3);
+        break;
     default:
         printf("nil\n");
     }

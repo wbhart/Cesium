@@ -82,6 +82,9 @@ void type_subst_type(type_t ** tin, type_rel_t * rel)
     {
         for (i = 0; i < t->arity; i++)
             type_subst_type(t->param + i, rel);
+    } else if (t->typ == ARRAY)
+    {
+        type_subst_type(&(t->ret), rel);
     }
 }
 
@@ -146,6 +149,12 @@ void unify(type_rel_t * rels, type_rel_t * ass)
                 exception("Type mismatch: tuple type not matched!\n");
             for (i = 0; i < rel->t1->arity; i++)
                 push_type_rel(rel->t1->param[i], rel->t2->param[i]);
+        }
+        else if (rel->t1->typ == ARRAY)
+        {
+            if (rel->t2->typ != ARRAY)
+                exception("Type mismatch: array type not matched!\n");
+            push_type_rel(rel->t1->ret, rel->t2->ret);
         }
         else if (rel->t1->typ == DATATYPE)
         {
@@ -696,6 +705,40 @@ void annotate_ast(ast_t * a)
         /* join types up */
         if (ty != id->type)
             push_type_rel(ty, id->type);
+        break;
+    case AST_LOCATION:
+        id = a->child;
+        p = id->next;
+        if (a->type == NULL) /* we haven't got a type so add typevar */
+            a->type = new_typevar();
+
+        /* make data type */
+        ty = array_type(a->type);
+        id->type = ty;
+
+        /* recurse if we have a location of a location */
+        if (id->tag == AST_IDENT) 
+        {
+            b = find_symbol(id->sym);
+            if (b != NULL && b->initialised)
+                push_type_rel(b->type, id->type);
+        }
+        annotate_ast(id);
+
+        /* join types up */
+        if (ty != id->type)
+            push_type_rel(ty, id->type);
+        
+        /* ensure index is an integer */
+        annotate_ast(p);
+        push_type_rel(p->type, t_int);
+        break;
+    case AST_ARRAY:
+        p = a->child;
+        annotate_ast(p);
+        /* the parameter is an integer */
+        push_type_rel(p->type, t_int);
+        a->type = array_type(new_typevar());
         break;
     }
 }

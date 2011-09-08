@@ -219,15 +219,24 @@ ArgList       = LParen RParen { $$ = ast_stmt0(AST_NIL); }
               { 
                  $$ = ast_reverse(r);
               }
+ArrayInit     = Array LParen i:Expression RParen
+              {
+                 $$ = ast_unary(i, AST_ARRAY);
+              }
 SlotOrAppl    = ( r:Identifier s:ArgList { r = ast_stmt2(r, s, AST_APPL); }
-                 | r:Identifier Dot s:Identifier { r = ast_stmt2(r, s, AST_SLOT); } ) 
+                 | r:Identifier Dot s:Identifier { r = ast_stmt2(r, s, AST_SLOT); } 
+                 | r:Identifier LBrack s:Expression RBrack { r = ast_stmt2(r, s, AST_LOCATION); }
+                ) 
                 ( s:ArgList { r = ast_stmt2(r, s, AST_APPL); } 
-                 | Dot s:Identifier { r = ast_stmt2(r, s, AST_SLOT); } )*
+                 | Dot s:Identifier { r = ast_stmt2(r, s, AST_SLOT); } 
+                 | LBrack s:Expression RBrack { r = ast_stmt2(r, s, AST_LOCATION); }
+                )*
               {
                  $$ = r;
               }
 PostfixExp    = ( r:SimplePlace Incr ) { $$ = ast_unary(r, AST_POST_INC); }
                  | ( r:SimplePlace Decr ) { $$ = ast_unary(r, AST_POST_DEC); }
+                 | ArrayInit
                  | SlotOrAppl
                  | Primary
 IfExpr        = If c:Expression Then e1:Expression Else e2:Expression
@@ -264,6 +273,7 @@ Break         = 'break' Spacing
 Lambda        = 'lambda' Spacing
 Datatype      = 'datatype' Spacing
 Symtab        = 'symtab' Spacing
+Array         = 'array' Spacing
 Comma         = ',' Spacing
 Reserved      = Var | If | Then | Else | While | Break | Lambda | Datatype | Return | Fn | Symtab
 Identifier    = !Reserved < IdentStart IdentCont* > Spacing
@@ -299,6 +309,8 @@ LParen        = '(' Spacing
 RParen        = ')' Spacing
 LBrace        = '{' Spacing
 RBrace        = Spacing '}'
+LBrack        = '[' Spacing
+RBrack        = ']' Spacing
 Dot           = '.' Spacing
 Incr          = '++' Spacing
 Decr          = '--' Spacing

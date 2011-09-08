@@ -49,6 +49,7 @@ void llvm_functions(jit_t * jit)
    ret = LLVMPointerType(LLVMInt8Type(), 0);
    fntype = LLVMFunctionType(ret, args, 1, 0);
    fn = LLVMAddFunction(jit->module, CS_MALLOC_NAME, fntype);
+   LLVMAddFunctionAttr(fn, LLVMNoAliasAttribute);
 }
 
 /* count parameters as represented by %'s in format string */
@@ -201,6 +202,7 @@ void print_obj(jit_t * jit, type_t * type, LLVMValueRef obj)
       case FN:
       case LAMBDA:
       case DATATYPE:
+      case ARRAY:
       case NIL:
          llvm_printf(jit, "%s", jit->nil_str);
          break;
@@ -315,6 +317,18 @@ LLVMValueRef LLVMBuildGCMalloc(jit_t * jit, LLVMTypeRef type, const char * name)
     return LLVMBuildPointerCast(jit->builder, gcmalloc, LLVMPointerType(type, 0), name);
 }
 
+/* 
+   Jit a call to GC_malloc to create an array
+*/
+LLVMValueRef LLVMBuildGCArrayMalloc(jit_t * jit, LLVMTypeRef type, LLVMValueRef num, const char * name)
+{
+    LLVMValueRef fn = LLVMGetNamedFunction(jit->module, CS_MALLOC_NAME);
+    LLVMValueRef size = LLVMSizeOf(type);
+    LLVMValueRef arg[1] = { LLVMBuildMul(jit->builder, num, size, "arr_size") };
+    LLVMValueRef gcmalloc = LLVMBuildCall(jit->builder, fn, arg, 1, "gc_malloc");
+    return LLVMBuildPointerCast(jit->builder, gcmalloc, LLVMPointerType(type, 0), name);
+}
+
 /* Build llvm lambda fn type from ordinary function type  */
 LLVMTypeRef lambda_fn_type(jit_t * jit, type_t * type)
 {
@@ -366,6 +380,19 @@ LLVMTypeRef tup_type(jit_t * jit, type_t * type)
     return LLVMStructType(args, params, 1);
 }
 
+/* Build llvm struct type for array type  */
+LLVMTypeRef arr_type(jit_t * jit, type_t * type)
+{
+    int i;
+
+    /* get parameter types */
+    LLVMTypeRef * args = (LLVMTypeRef *) GC_MALLOC(2*sizeof(LLVMTypeRef));
+    args[0] = LLVMPointerType(type_to_llvm(jit, type->ret), 0); 
+    args[1] = LLVMWordType();
+
+    /* make LLVM struct type */
+    return LLVMStructType(args, 2, 1);
+}
 
 /* Convert a type to an LLVMTypeRef */
 LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type)
@@ -402,6 +429,8 @@ LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type)
         return LLVMPointerType(lambda_type(jit, type), 0);
     else if (type->typ == TUPLE || type->typ == DATATYPE)
         return LLVMPointerType(tup_type(jit, type), 0);
+    else if (type->typ == ARRAY)
+        return LLVMPointerType(arr_type(jit, type), 0);
     else if (type->typ == TYPEVAR)
         jit_exception(jit, "Unable to infer types\n");
     else
@@ -903,12 +932,44 @@ int exec_lslot(jit_t * jit, ast_t * ast)
 }
 
 /*
+   Jit an array location access
+*/
+int exec_llocation(jit_t * jit, ast_t * ast)
+{
+    ast_t * id = ast->child;
+    ast_t * p = id->next;
+    int i;
+    
+    if (ast->sym == NULL) /* need some kind of name */
+        ast->sym = sym_lookup("none");
+    
+    exec_ast(jit, id);
+    exec_ast(jit, p);
+    
+    /* get array from datatype */
+    LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+    ast->val = LLVMBuildInBoundsGEP(jit->builder, id->val, indices, 2, "arr");
+    ast->val = LLVMBuildLoad(jit->builder, ast->val, "array");
+    
+    /* get location within array */
+    LLVMValueRef indices2[1] = { p->val };
+    ast->val = LLVMBuildInBoundsGEP(jit->builder, ast->val, indices2, 1, "arr_entry");
+    
+    ast->type = id->type->ret;
+    
+    return 0;
+}
+
+/*
    Find identifier binding and load the place corresponding to it (lvalue)
 */
 int exec_place(jit_t * jit, ast_t * ast)
 {
     if (ast->tag == AST_SLOT) /* deal specially with slots */
         return exec_lslot(jit, ast);
+    
+    if (ast->tag == AST_LOCATION) /* deal specially with array locations */
+        return exec_llocation(jit, ast);
     
     if (ast->val == NULL) /* we haven't already loaded it */
     {
@@ -1723,6 +1784,38 @@ int exec_slot(jit_t * jit, ast_t * ast)
 }
 
 /*
+   Jit an array access
+*/
+int exec_location(jit_t * jit, ast_t * ast)
+{
+    ast_t * id = ast->child;
+    ast_t * p = id->next;
+    int i;
+    
+    if (ast->sym == NULL) /* need some kind of name */
+        ast->sym = sym_lookup("none");
+    
+    exec_ast(jit, id);
+    exec_ast(jit, p);
+    
+    /* get array from datatype */
+    LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+    ast->val = LLVMBuildInBoundsGEP(jit->builder, id->val, indices, 2, "arr");
+    ast->val = LLVMBuildLoad(jit->builder, ast->val, "array");
+    
+    /* get location within array */
+    LLVMValueRef indices2[1] = { p->val };
+    ast->val = LLVMBuildInBoundsGEP(jit->builder, ast->val, indices2, 1, "arr_entry");
+    
+    /* load value */
+    ast->val = LLVMBuildLoad(jit->builder, ast->val, "entry");
+    
+    ast->type = id->type->ret;
+   
+    return 0;
+}
+
+/*
    Jit a function application
 */
 int exec_appl(jit_t * jit, ast_t * ast)
@@ -1782,6 +1875,36 @@ int exec_appl(jit_t * jit, ast_t * ast)
     /* update return type */
     ast->type = fn->type->ret; 
         
+    return 0;
+}
+
+/*
+   Jit an array initialisation
+*/
+int exec_array(jit_t * jit, ast_t * ast)
+{
+    int i;
+
+    subst_type(&ast->type);
+
+    LLVMTypeRef str_ty = arr_type(jit, ast->type);
+    ast->val = LLVMBuildGCMalloc(jit, str_ty, "tuple_s");
+
+    ast_t * p = ast->child;
+    exec_ast(jit, p);
+        
+    /* insert length into array struct */
+    LLVMValueRef indices[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 1, 0) };
+    LLVMValueRef entry = LLVMBuildInBoundsGEP(jit->builder, ast->val, indices, 2, "length");
+    LLVMBuildStore(jit->builder, p->val, entry);
+    
+    /* create array */
+    LLVMValueRef arr = LLVMBuildGCArrayMalloc(jit, type_to_llvm(jit, ast->type->ret), p->val, "array");
+
+    LLVMValueRef indices2[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+    entry = LLVMBuildInBoundsGEP(jit->builder, ast->val, indices2, 2, "arr");
+    LLVMBuildStore(jit->builder, arr, entry);
+    
     return 0;
 }
 
@@ -2045,8 +2168,12 @@ int exec_ast(jit_t * jit, ast_t * ast)
         return exec_tuple(jit, ast);
     case AST_DATATYPE:
         return exec_datatype(jit, ast);
+    case AST_LOCATION:
+        return exec_location(jit, ast);
     case AST_SLOT:
         return exec_slot(jit, ast);
+    case AST_ARRAY:
+        return exec_array(jit, ast);
     default:
         ast->type = t_nil;
         return 0;

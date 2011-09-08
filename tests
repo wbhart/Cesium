@@ -456,3 +456,54 @@ fn bill(n) {
 }
 bill(4).b = 7;
 
+arrays:
+=======
+
+fn bill(n) {
+   var a = array(n);
+   var i = 0;
+   while (i < n) {
+      a[i] = i;
+      i++;
+   }
+   return a;
+}
+var t = bill(1000);
+t[43];
+
+{
+   var i = 0, arr = array(10);
+   while (i < 10) {
+      arr[i] = i;
+      i++;
+   }
+}
+
+fn bill(n) {
+   var a = array(n);
+   var i = 0;
+   while (i < n) {
+      a[i] = i;
+      i++;
+   }
+   return lambda(n) { a[n] };
+}
+var t = bill(1000);
+t(43);
+
+datatype bill(a, b, c);
+var s;
+{
+   var i = 0, t = array(100);
+   var u = array(100);
+   while (i < 100) {
+      u[i] = i;
+      t[i] = bill(1, "hello", u[i]);
+      i++;
+   }
+   s = t[31];
+}
+s.a;
+s.b;
+s.c;
+

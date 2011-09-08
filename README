@@ -72,6 +72,12 @@ datatype mytype(a, b, c);
 var s = mytype(1, 2, 3);
 s.a += 4;
 
+To initialise an array of length 100:
+var i = 0, a = array(100);
+while (i < 100) {
+   a[i] = i;
+}
+
 The file "tests" gives a lot of examples of things you can (and can't) do.
 
 Note there are no typeclass checks at the moment. Things like "string"+"more"; typecheck fine, but then just crash. This will be fixed eventually.

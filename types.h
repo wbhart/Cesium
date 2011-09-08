@@ -40,6 +40,8 @@ type_t * fn_type(type_t * ret, int num, type_t ** param);
 
 type_t * tuple_type(int num, type_t ** param);
 
+type_t * array_type(type_t * param);
+
 type_t * data_type(int num, type_t ** param, sym_t * sym, sym_t ** slots);
 
 type_t * fn_to_lambda_type(type_t * type);

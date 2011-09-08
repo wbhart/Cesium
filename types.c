@@ -83,6 +83,16 @@ type_t * data_type(int num, type_t ** param, sym_t * sym, sym_t ** slot)
    return t;
 }
 
+type_t * array_type(type_t * param)
+{
+   type_t * t = (type_t *) GC_MALLOC(sizeof(type_t));
+   t->typ = ARRAY;
+   t->ret = param;
+   t->arity = 0;
+
+   return t;
+}
+
 /* convert to a lambda type */
 type_t * fn_to_lambda_type(type_t * type)
 {
@@ -177,5 +187,10 @@ void print_type(type_t * t)
     case TYPEVAR:
         printf("T%ld", t->arity);
         break;
+    case ARRAY:
+        printf("[");
+        print_type(t->ret);
+        printf("]");
+        break; 
     } 
 }
