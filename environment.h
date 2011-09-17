@@ -21,6 +21,7 @@ typedef struct bind_t
    type_t * type;
    sym_t * sym;
    LLVMValueRef val;
+   LLVMTypeRef typeval;
    int initialised;
    struct bind_t * next;
 } bind_t;

@@ -17,10 +17,12 @@ typedef struct type_t
 {
    typ_t typ;
    int arity;
+   int recursive;
    struct type_t ** param;
    struct type_t * ret;
    struct sym_t ** slot;
    struct sym_t * sym;
+   LLVMTypeRef val;
 } type_t;
 
 extern type_t * t_nil;

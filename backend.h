@@ -22,6 +22,12 @@
 #define LLVMWordType() LLVMInt64Type()
 #endif
 
+typedef struct rec_t
+{
+    LLVMTypeRef l;
+    type_t * t;
+} rec_t;
+
 typedef struct jit_t
 {
     LLVMBuilderRef builder;
@@ -38,6 +44,7 @@ typedef struct jit_t
     int bind_num;
     LLVMTypeRef env_s;
     LLVMValueRef env;
+    struct rec_t * re_store;
 } jit_t;
 
 jit_t * llvm_init(void);

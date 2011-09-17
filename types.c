@@ -142,6 +142,13 @@ void print_type(type_t * t)
         break;
     case FN:
     case LAMBDA:
+        if (t->recursive == 2)
+        {
+            printf("fn");
+            break;
+        }
+        if (t->recursive == 1)
+            t->recursive = 2;
         printf("(");
         if (t->arity == 0)
             printf("nil");
@@ -157,6 +164,8 @@ void print_type(type_t * t)
         printf(")");
         printf(" -> ");
         print_type(t->ret);
+        if (t->recursive == 2)
+            t->recursive = 1;
         break;
     case TUPLE:
         printf("(");
@@ -174,6 +183,13 @@ void print_type(type_t * t)
         else
         {
             printf("%s", t->sym->name);
+        }
+        if (t->recursive == 2)
+            break;
+        if (t->recursive == 1)
+            t->recursive = 2;
+        if (t->sym != NULL)
+        {
             printf("(");
             for (i = 0; i < t->arity - 1; i++)
             {
@@ -181,8 +197,10 @@ void print_type(type_t * t)
                 printf(", ");
             }
             print_type(t->param[i]);
-            printf(")");  
+            printf(")");
         }
+        if (t->recursive == 2)
+            t->recursive = 1;
         break;
     case TYPEVAR:
         printf("T%ld", t->arity);
@@ -191,6 +209,6 @@ void print_type(type_t * t)
         printf("[");
         print_type(t->ret);
         printf("]");
-        break; 
+        break;
     } 
 }

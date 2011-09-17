@@ -281,6 +281,9 @@ jit_t * llvm_init(void)
     jit->nil_str = LLVMBuildGlobalStringPtr(jit->builder, "nil", "nil");
     END_EXEC;
 
+    /* initialise the recursive datatype store */
+    jit->re_store = NULL;
+
     return jit;
 }
 
@@ -295,6 +298,7 @@ void llvm_reset(jit_t * jit)
     jit->function = NULL;
     jit->builder = NULL;
     jit->breakto = NULL;
+    jit->re_store = NULL;
 }
 
 /*
@@ -369,7 +373,9 @@ LLVMTypeRef lambda_fn_type(jit_t * jit, type_t * type)
     LLVMTypeRef ret = type_to_llvm(jit, type->ret); 
     
     /* make LLVM function type */
-    return LLVMFunctionType(ret, args, params + 1, 0);
+    LLVMTypeRef s = LLVMFunctionType(ret, args, params + 1, 0);
+
+    return s;
 }
 
 /* 
@@ -390,16 +396,29 @@ LLVMTypeRef lambda_type(jit_t * jit, type_t * type)
 /* Build llvm struct type from ordinary tuple type  */
 LLVMTypeRef tup_type(jit_t * jit, type_t * type)
 {
+    bind_t * bind = find_symbol(type->sym);
+
+    if (bind->typeval != NULL) 
+        return bind->typeval;
+    
+    if (type->recursive)
+        bind->typeval = LLVMOpaqueType();
+    
     int params = type->arity;
     int i;
-
     /* get parameter types */
     LLVMTypeRef * args = (LLVMTypeRef *) GC_MALLOC(params*sizeof(LLVMTypeRef));
     for (i = 0; i < params; i++)
         args[i] = type_to_llvm(jit, type->param[i]); 
-
+    
     /* make LLVM struct type */
-    return LLVMStructType(args, params, 1);
+    LLVMTypeRef s = LLVMStructType(args, params, 1);
+    if (bind->typeval != NULL)
+        LLVMRefineType(bind->typeval, s);
+
+    bind->typeval = s;
+
+    return s;
 }
 
 /* Build llvm struct type for array type  */
@@ -464,6 +483,8 @@ LLVMTypeRef type_to_llvm(jit_t * jit, type_t * type)
 */
 int exec_int(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_int\n");
+    
     long num = atol(ast->sym->name);
     
     ast->val = LLVMConstInt(LLVMWordType(), num, 0);
@@ -476,6 +497,8 @@ int exec_int(jit_t * jit, ast_t * ast)
 */
 int exec_double(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_double\n");
+    
     double num = atof(ast->sym->name);
     
     ast->val = LLVMConstReal(LLVMDoubleType(), num);
@@ -488,6 +511,8 @@ int exec_double(jit_t * jit, ast_t * ast)
 */
 int exec_bool(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_bool\n");
+    
     if (strcmp(ast->sym->name, "true") == 0)
         ast->val = LLVMConstInt(LLVMInt1Type(), 1, 0);
     else
@@ -502,6 +527,8 @@ int exec_bool(jit_t * jit, ast_t * ast)
 */
 int exec_string(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_string\n");
+    
     char * name = ast->sym->name;
          
     if (ast->sym->val == NULL)
@@ -567,6 +594,8 @@ int exec_string(jit_t * jit, ast_t * ast)
 #define exec_unary(__name, __fop, __iop, __str)         \
 __name(jit_t * jit, ast_t * ast)                        \
 {                                                       \
+    if (TRACE) printf("exec_" __str "\n");              \
+                                                        \
     ast_t * expr1 = ast->child;                         \
                                                         \
     exec_ast(jit, expr1);                               \
@@ -586,6 +615,8 @@ __name(jit_t * jit, ast_t * ast)                        \
 #define exec_unary1(__name, __iop, __str)               \
 __name(jit_t * jit, ast_t * ast)                        \
 {                                                       \
+    if (TRACE) printf("exec_" __str "\n");              \
+                                                        \
     ast_t * expr1 = ast->child;                         \
                                                         \
     exec_ast(jit, expr1);                               \
@@ -602,6 +633,8 @@ __name(jit_t * jit, ast_t * ast)                        \
 #define exec_unary_pre(__name, __fop, __iop, __c1, __c2, __str) \
 __name(jit_t * jit, ast_t * ast)                                \
 {                                                               \
+    if (TRACE) printf("exec_" __str "\n");                      \
+                                                                \
     ast_t * expr1 = ast->child;                                 \
                                                                 \
     exec_place(jit, expr1);                                     \
@@ -625,6 +658,8 @@ __name(jit_t * jit, ast_t * ast)                                \
 #define exec_unary_post(__name, __fop, __iop, __c1, __c2, __str) \
 __name(jit_t * jit, ast_t * ast)                                 \
 {                                                                \
+    if (TRACE) printf("exec_" __str "\n");                       \
+                                                                 \
     ast_t * expr1 = ast->child;                                  \
                                                                  \
     exec_place(jit, expr1);                                      \
@@ -668,6 +703,8 @@ int exec_unary_post(exec_postdec, LLVMBuildFSub, LLVMBuildSub, 1.0, 1, "post-dec
 #define exec_binary(__name, __fop, __iop, __str)        \
 __name(jit_t * jit, ast_t * ast)                        \
 {                                                       \
+    if (TRACE) printf("exec_" __str "\n");              \
+                                                        \
     ast_t * expr1 = ast->child;                         \
     ast_t * expr2 = expr1->next;                        \
                                                         \
@@ -689,6 +726,8 @@ __name(jit_t * jit, ast_t * ast)                        \
 #define exec_binary_rel(__name, __fop, __frel, __iop, __irel, __str)  \
 __name(jit_t * jit, ast_t * ast)                                      \
 {                                                                     \
+    if (TRACE) printf("exec_" __str "\n");                            \
+                                                                      \
     ast_t * expr1 = ast->child;                                       \
     ast_t * expr2 = expr1->next;                                      \
                                                                       \
@@ -708,6 +747,8 @@ __name(jit_t * jit, ast_t * ast)                                      \
 #define exec_binary1(__name, __iop, __str)              \
 __name(jit_t * jit, ast_t * ast)                        \
 {                                                       \
+    if (TRACE) printf("exec_" __str "\n");              \
+                                                        \
     ast_t * expr1 = ast->child;                         \
     ast_t * expr2 = expr1->next;                        \
                                                         \
@@ -726,6 +767,8 @@ __name(jit_t * jit, ast_t * ast)                        \
 #define exec_binary_pre(__name, __fop, __iop, __str)          \
 __name(jit_t * jit, ast_t * ast)                              \
 {                                                             \
+    if (TRACE) printf("exec_" __str "\n");                    \
+                                                              \
     ast_t * expr1 = ast->child;                               \
     ast_t * expr2 = ast->child->next;                         \
                                                               \
@@ -749,6 +792,8 @@ __name(jit_t * jit, ast_t * ast)                              \
 #define exec_binary_pre1(__name, __iop, __str)                \
 __name(jit_t * jit, ast_t * ast)                              \
 {                                                             \
+    if (TRACE) printf("exec_" __str "\n");                    \
+                                                              \
     ast_t * expr1 = ast->child;                               \
     ast_t * expr2 = ast->child->next;                         \
                                                               \
@@ -867,6 +912,8 @@ LLVMValueRef make_fn_lambda(jit_t * jit,
 */
 int exec_ident(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_ident\n");              
+
     if (ast->tag == AST_SLOT) /* deal specially with slots */
         return exec_slot(jit, ast);
 
@@ -882,6 +929,7 @@ int exec_ident(jit_t * jit, ast_t * ast)
     
     if (ast->type->typ == ARRAY && ast->type->arity != 0)
     {
+        START_EXEC;
         LLVMTypeRef str_ty = arr_type(jit, ast->type);
         LLVMValueRef val = LLVMBuildGCMalloc(jit, str_ty, "tuple_s", 0);
 
@@ -904,6 +952,7 @@ int exec_ident(jit_t * jit, ast_t * ast)
         exec_place(jit, ast);
         LLVMBuildStore(jit->builder, val, ast->val);
         ast->bind->initialised = 1;
+        END_EXEC;
     }
 
     /* if the id is a datatype constructor we do nothing */
@@ -928,6 +977,8 @@ int exec_ident(jit_t * jit, ast_t * ast)
 */
 int exec_decl(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_decl\n");              
+
     bind_t * bind = ast->bind;
     
     subst_type(&bind->type); /* fill in the type */
@@ -955,6 +1006,8 @@ int exec_decl(jit_t * jit, ast_t * ast)
 */
 int exec_lslot(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_lslot\n");              
+
     ast_t * id = ast->child;
     ast_t * p = id->next;
     int i, params = id->type->arity;
@@ -984,6 +1037,8 @@ int exec_lslot(jit_t * jit, ast_t * ast)
 */
 int exec_llocation(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_llocation\n");              
+
     ast_t * id = ast->child;
     ast_t * p = id->next;
     int i;
@@ -1013,6 +1068,8 @@ int exec_llocation(jit_t * jit, ast_t * ast)
 */
 int exec_place(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_place\n");              
+
     if (ast->tag == AST_SLOT) /* deal specially with slots */
         return exec_lslot(jit, ast);
     
@@ -1040,6 +1097,8 @@ int exec_place(jit_t * jit, ast_t * ast)
 
 int exec_assign_id(jit_t * jit, ast_t * id, type_t * type, LLVMValueRef val)
 {
+    if (TRACE) printf("exec_assign_id\n");              
+
     int allocated = 0;
 
     if (id->val != NULL) 
@@ -1076,6 +1135,8 @@ int exec_assign_id(jit_t * jit, ast_t * id, type_t * type, LLVMValueRef val)
 
 int exec_assign_tuple(jit_t * jit, ast_t * t1, type_t * type, LLVMValueRef val)
 {
+    if (TRACE) printf("exec_assign_tuple\n");              
+
     ast_t * p1 = t1->child;
     int count = type->arity;
     int i;
@@ -1103,6 +1164,8 @@ int exec_assign_tuple(jit_t * jit, ast_t * t1, type_t * type, LLVMValueRef val)
 */
 int exec_assignment(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_assignment\n");              
+
     ast_t * id = ast->child;
     ast_t * expr = ast->child->next;
     
@@ -1134,6 +1197,8 @@ int exec_assignment(jit_t * jit, ast_t * ast)
 
 int exec_varassign_id(jit_t * jit, ast_t * id)
 {
+    if (TRACE) printf("exec_varassign_id\n");              
+
     bind_t * bind = find_symbol(id->sym); /* deal with environment vars */
     if (bind->val != NULL) /* the variable is in an env */
     {
@@ -1148,6 +1213,8 @@ int exec_varassign_id(jit_t * jit, ast_t * id)
 
 int exec_varassign_tuple(jit_t * jit, ast_t * p)
 {
+    if (TRACE) printf("exec_varassign_tuple\n");              
+
     p = p->child; /* first element of tuple */
 
     while (p != NULL)
@@ -1168,6 +1235,8 @@ int exec_varassign_tuple(jit_t * jit, ast_t * p)
 */
 int exec_varassign(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_varassign\n");              
+
     ast_t * p = ast->child;
 
     while (p != NULL)
@@ -1210,6 +1279,8 @@ int exec_varassign(jit_t * jit, ast_t * ast)
 */
 int exec_if(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_if\n");              
+
     ast_t * exp = ast->child;
     ast_t * con = exp->next;
     int exit1;
@@ -1241,6 +1312,8 @@ int exec_if(jit_t * jit, ast_t * ast)
 */
 int exec_ifelse(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_ifelse\n");              
+
     ast_t * exp = ast->child;
     ast_t * con = exp->next;
     ast_t * alt = con->next;
@@ -1287,6 +1360,8 @@ int exec_ifelse(jit_t * jit, ast_t * ast)
 */
 int exec_ifexpr(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_ifexpr\n");              
+
     ast_t * exp = ast->child;
     ast_t * con = exp->next;
     ast_t * alt = con->next;
@@ -1331,6 +1406,8 @@ int exec_ifexpr(jit_t * jit, ast_t * ast)
 */
 int exec_block(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_block\n");              
+
     ast_t * c = ast->child;
     current_scope = ast->env;
     int exit1;
@@ -1352,6 +1429,8 @@ int exec_block(jit_t * jit, ast_t * ast)
 */
 int exec_while(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_while\n");              
+
     ast_t * exp = ast->child;
     ast_t * con = exp->next;
     int exit1;
@@ -1388,6 +1467,8 @@ int exec_while(jit_t * jit, ast_t * ast)
 */
 int exec_break(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_break\n");              
+
     if (jit->breakto == NULL)
         jit_exception(jit, "Attempt to break outside loop\n");
 
@@ -1401,6 +1482,8 @@ int exec_break(jit_t * jit, ast_t * ast)
 */
 int exec_return(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_return\n");              
+
     ast_t * p = ast->child;
     
     if (p)
@@ -1454,6 +1537,8 @@ void fill_in_types(ast_t * ast)
 */
 int exec_fnparams(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_fnparams\n");              
+
     ast_t * p = ast->child;
     int i = 0;
 
@@ -1471,7 +1556,7 @@ int exec_fnparams(jit_t * jit, ast_t * ast)
             {
                LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(jit, p->type), p->sym->name);
                LLVMBuildStore(jit->builder, param, palloca);
-        
+               
                bind->val = palloca;
                p->val = palloca;
             } else /* param is in an env */
@@ -1495,15 +1580,20 @@ int exec_fnparams(jit_t * jit, ast_t * ast)
 */
 int exec_lambdaparams(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_lambdaparams\n");              
+
     ast_t * p = ast->child;
     int i = 0;
 
     if (jit->bind_num != 0) /* we have an environment */
     {
-        while (p != NULL) /* get env parameter */
+        if (p->tag != AST_NIL)
         {
-            i++;
-            p = p->next;
+            while (p != NULL) /* get env parameter */
+            {
+                i++;
+                p = p->next;
+            }
         }
         LLVMValueRef param = LLVMGetParam(jit->function, i);
         jit->env = LLVMBuildPointerCast(jit->builder, param, LLVMPointerType(jit->env_s, 0), "env");
@@ -1511,31 +1601,34 @@ int exec_lambdaparams(jit_t * jit, ast_t * ast)
     
     p = ast->child;
     i = 0;
-    while (p != NULL)
+    if (p->tag != AST_NIL)
     {
-        bind_t * bind = find_symbol(p->sym);
-        subst_type(&bind->type);
-        p->type = bind->type;
-
-        LLVMValueRef param = LLVMGetParam(jit->function, i);
-            
-        if (bind->val == NULL) /* we have an ordinary param */
+        while (p != NULL)
         {
-            LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(jit, p->type), p->sym->name);
-            LLVMValueRef val = LLVMBuildStore(jit->builder, param, palloca);
+            bind_t * bind = find_symbol(p->sym);
+            subst_type(&bind->type);
+            p->type = bind->type;
             
-            bind->val = palloca;
-            p->val = palloca;
-        } else /* param is in an env */
-        {
-            LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), bind->val };
-            bind->val = LLVMBuildInBoundsGEP(jit->builder, jit->env, index, 2, "env");
-            LLVMBuildStore(jit->builder, param, bind->val);
-            p->val = bind->val;
-        }
+            LLVMValueRef param = LLVMGetParam(jit->function, i);
+            
+            if (bind->val == NULL) /* we have an ordinary param */
+            {
+                LLVMValueRef palloca = LLVMBuildAlloca(jit->builder, type_to_llvm(jit, p->type), p->sym->name);
+                LLVMValueRef val = LLVMBuildStore(jit->builder, param, palloca);
+            
+                bind->val = palloca;
+                p->val = palloca;
+            } else /* param is in an env */
+            {
+                LLVMValueRef index[2] = { LLVMConstInt(LLVMInt32Type(), 0, 0), bind->val };
+                bind->val = LLVMBuildInBoundsGEP(jit->builder, jit->env, index, 2, "env");
+                LLVMBuildStore(jit->builder, param, bind->val);
+                p->val = bind->val;
+            }
         
-        i++;
-        p = p->next;
+            i++;
+            p = p->next;
+        }
     }
         
     return 0;
@@ -1546,6 +1639,8 @@ int exec_lambdaparams(jit_t * jit, ast_t * ast)
 */
 int exec_fndec(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_fndec\n");              
+
     fill_in_types(ast); /* just fill in all the types we've inferred */
       
     return 0;
@@ -1556,6 +1651,8 @@ int exec_fndec(jit_t * jit, ast_t * ast)
 */
 int exec_datatype(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_datatype\n");              
+
     /* can't do anything until we know the types */
       
     return 0;
@@ -1566,6 +1663,8 @@ int exec_datatype(jit_t * jit, ast_t * ast)
 */
 int exec_fndef(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_fndef\n");              
+
     ast_t * fn = ast->child;
     int params = ast->type->arity;
     int i;
@@ -1667,6 +1766,8 @@ int exec_fndef(jit_t * jit, ast_t * ast)
 */
 int exec_lambda(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_lambda\n");              
+
     ast_t * fn = ast->child;
     int params = ast->type->arity;
     int i;
@@ -1800,7 +1901,7 @@ void fn_to_lambda(jit_t * jit, type_t ** type,
     else
         LLVMBuildStore(jit->builder, env_ptr, env);
     *val = str;
-
+    
     /* set lambda type */
     *type = fn_to_lambda_type(*type);
 }
@@ -1810,10 +1911,12 @@ void fn_to_lambda(jit_t * jit, type_t ** type,
 */
 int exec_typeconstr(jit_t * jit, ast_t * ast, LLVMValueRef * args)
 {
+    if (TRACE) printf("exec_typeconstr\n");              
+
     ast_t * id = ast->child;
     int i, params = id->type->arity;
     int atomic = 1;
-
+   
     LLVMTypeRef str_ty = tup_type(jit, id->type);
 
     /* determine whether fields are atomic */
@@ -1839,6 +1942,8 @@ int exec_typeconstr(jit_t * jit, ast_t * ast, LLVMValueRef * args)
 */
 int exec_slot(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_slot\n");              
+
     ast_t * id = ast->child;
     ast_t * p = id->next;
     int i, params = id->type->arity;
@@ -1869,6 +1974,8 @@ int exec_slot(jit_t * jit, ast_t * ast)
 */
 int exec_location(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_location\n");              
+
     ast_t * id = ast->child;
     ast_t * p = id->next;
     int i;
@@ -1901,6 +2008,8 @@ int exec_location(jit_t * jit, ast_t * ast)
 */
 int exec_appl(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_appl\n");              
+
     ast_t * fn = ast->child;
     ast_t * p;
     int i, params;
@@ -1964,6 +2073,8 @@ int exec_appl(jit_t * jit, ast_t * ast)
 */
 int exec_array(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_array\n");              
+
     int i;
 
     subst_type(&ast->type);
@@ -2007,6 +2118,8 @@ int exec_array(jit_t * jit, ast_t * ast)
 */
 int exec_tuple(jit_t * jit, ast_t * ast)
 {
+    if (TRACE) printf("exec_tuple\n");              
+
     int params = ast->type->arity;
     int i;
     int atomic = 1;
@@ -2083,7 +2196,7 @@ void add_bind(jit_t * jit, bind_t * bind)
 }
 
 /*
-   Add bindings to bind arrat for all local identifiers refered to 
+   Add bindings to bind array for all local identifiers referred to 
    out of their own scope
 */
 void collect_idents(jit_t * jit, ast_t * ast)

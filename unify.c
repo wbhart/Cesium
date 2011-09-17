@@ -39,13 +39,65 @@ void rel_assign_rewind(void)
         rel_assign = rel_assign->next;
 }
 
-void push_type_rel(type_t * t1, type_t * t2)
+void merge_datatypes(type_t ** pt1, type_t ** pt2)
 {
-   type_rel_t * t = (type_rel_t *) GC_MALLOC(sizeof(type_rel_t));
-   t->t1 = t1;
-   t->t2 = t2;
-   t->next = rel_stack;
-   rel_stack = t;
+    type_t * t1 = *pt1;
+    type_t * t2 = *pt2;
+    int a1 = t1->arity;
+    int a2 = t2->arity;
+    int i, j;
+
+    t1->param = (type_t **) GC_REALLOC(t1->param, (a1+a2)*sizeof(type_t *));
+    t1->slot = (sym_t **) GC_REALLOC(t1->slot, (a1+a2)*sizeof(sym_t *));
+                   
+    for (i = 0; i < a2; i++)
+    {
+        for (j = 0; j < a1; j++)
+            if (t1->slot[j] == t2->slot[i]) /* we have it */
+                break;
+        if (j == a1) /* didn't find it */
+        {
+            t1->param[a1] = t2->param[i]; /* so add it in */
+            t1->slot[a1] = t2->slot[i];
+            a1++;
+        }
+    }
+    t1->arity = a1;
+                    
+    type_rel_t * rel = (type_rel_t *) GC_MALLOC(sizeof(type_rel_t));
+    rel->t1 = t1;
+    rel->t2 = t2;
+    rels_subst(rel_stack, rel);
+    ass_subst(rel_assign, rel);
+
+    *pt2 = *pt1;
+}
+
+void push_type_rel(type_t ** t1, type_t ** t2)
+{
+   if ((*t1)->typ == DATATYPE && (*t2)->typ == DATATYPE
+       && (*t1)->sym == NULL && (*t2)->sym == NULL)
+       merge_datatypes(t1, t2);
+   else {
+       type_rel_t * t = (type_rel_t *) GC_MALLOC(sizeof(type_rel_t));
+       t->t1 = *t1;
+       t->t2 = *t2;
+       t->next = rel_stack;
+       rel_stack = t;
+   }
+}
+
+void push_type_ass(type_rel_t * rel)
+{
+    check_recursion(rel);
+    if (rel->t1->typ == DATATYPE && rel->t2->typ == DATATYPE
+       && rel->t1->sym == NULL && rel->t2->sym == NULL)
+       merge_datatypes(&rel->t1, &rel->t2);
+    else 
+    {
+        rel->next = rel_assign;
+        rel_assign = rel;
+    }
 }
 
 type_rel_t * pop_type_rel(void)
@@ -59,6 +111,107 @@ type_rel_t * pop_type_rel(void)
    return t;
 }
 
+int is_recursive(type_t * t, type_t * rec)
+{
+    int i;
+
+    if (t == rec) return 1;
+    
+    if (t == NULL || t->typ == TYPEVAR || t->recursive != 0)
+        return 0;
+
+    if (t->typ == FN || t->typ == LAMBDA)
+    {
+        for (i = 0; i < t->arity; i++)
+            if (is_recursive(t->param[i], rec))
+                return 1;
+        return is_recursive(t->ret, rec);
+    } else if (t->typ == TUPLE || t->typ == DATATYPE)
+    {
+        for (i = 0; i < t->arity; i++)
+        {
+            if (is_recursive(t->param[i], rec))
+                return 1;
+        }
+    } else if (t->typ == ARRAY)
+        return is_recursive(t->ret, rec);
+}
+
+type_t * make_recursive(type_t * t, type_t * rec)
+{
+    int i;
+
+    if (t == NULL || t->typ == TYPEVAR || t->recursive != 0)
+        return t;
+ 
+    if (t->typ == FN || t->typ == LAMBDA)
+    {
+        int count = t->arity;
+        type_t ** param = (type_t **) GC_MALLOC(count*sizeof(type_t *));
+        for (i = 0; i < count; i++)
+            param[i] = make_recursive(t->param[i], rec);
+        type_t * fn = fn_type(make_recursive(t->ret, rec), count, param);
+        if (t->typ == LAMBDA)
+            fn->typ = LAMBDA;
+        return fn;
+    } else if (t->typ == TUPLE || t->typ == DATATYPE)
+        t->recursive = is_recursive(t, rec);
+        
+    return t;
+}
+
+/* 
+   search for recursion: find occurrences of var (which should be a typevar) 
+   within t and replace with rec and set rec to recursive
+*/
+void subst_recursive(type_t * t, type_t * var, type_t * rec)
+{
+    int i;
+    
+    if (t == NULL || t->typ == TYPEVAR || t->recursive != 0)
+        return;
+    
+    if (t->typ == FN || t->typ == LAMBDA)
+    {
+        for (i = 0; i < t->arity; i++)
+        {
+            if (t->param[i] == var)
+                t->param[i] = make_recursive(rec, var);
+            else
+                subst_recursive(t->param[i], var, rec);
+        }
+        if (t->ret != NULL)
+        {
+            if (t->ret == var)
+                t->ret = make_recursive(rec, var);
+            else
+                subst_recursive(t->ret, var, rec);
+        }
+    } else if (t->typ == TUPLE || t->typ == DATATYPE)
+    {
+        for (i = 0; i < t->arity; i++)
+        {
+            if (t->param[i] == var)
+                t->param[i] = make_recursive(rec, var);
+            else
+                subst_recursive(t->param[i], var, rec);
+        }
+    } else if (t->typ == ARRAY)
+    {
+        if (t->ret == var)
+            t->ret = make_recursive(rec, var);
+        else
+            subst_recursive(t->ret, var, rec);
+    }
+}
+
+void check_recursion(type_rel_t * rel)
+{
+    /* if we have something like T1 = datatype(.... T1 ....) make recursive */
+    if (rel->t1->typ == TYPEVAR && rel->t2->recursive == 0)
+        subst_recursive(rel->t2, rel->t1, rel->t2);
+}
+
 void type_subst_type(type_t ** tin, type_rel_t * rel)
 {
     type_t * t = *tin;
@@ -66,6 +219,14 @@ void type_subst_type(type_t ** tin, type_rel_t * rel)
 
     if (t == NULL)
         return;
+
+    if (t->recursive == 2)
+    {
+        t->recursive = 1;
+        return;
+    }
+    if (t->recursive == 1)
+        t->recursive = 2;
     
     if (t->typ == TYPEVAR)
     {
@@ -105,6 +266,7 @@ void rels_subst(type_rel_t * rels, type_rel_t * rel)
     {
         type_subst_type(&(rels->t1), rel);
         type_subst_type(&(rels->t2), rel);
+        
         rels = rels->next;
     }
 }
@@ -113,7 +275,9 @@ void ass_subst(type_rel_t * rels, type_rel_t * rel)
 {
     while (rels != NULL)
     {
+        check_recursion(rels);
         type_subst_type(&(rels->t2), rel);
+         
         rels = rels->next;
     }
 }
@@ -125,36 +289,49 @@ void unify(type_rel_t * rels, type_rel_t * ass)
     while (rel_stack != NULL)
     {
         type_rel_t * rel = pop_type_rel();
+        check_recursion(rel);
+   
         if (rel->t1 == rel->t2)
             continue;
-        else if (rel->t1->typ == TYPEVAR)
+
+        if (rel->t1->recursive && rel->t2->recursive)
+        {
+            if (rel->t2->recursive == 2)
+            {
+                rel->t2->recursive = 1;
+                continue;
+            } 
+            if (rel->t2->recursive == 1)
+                rel->t2->recursive = 2;
+        }
+            
+        if (rel->t1->typ == TYPEVAR)
         {
             rels_subst(rel_stack, rel);
             ass_subst(rel_assign, rel);
-            rel->next = rel_assign;
-            rel_assign = rel;
+            push_type_ass(rel);
         } else if (rel->t2->typ == TYPEVAR)
-            push_type_rel(rel->t2, rel->t1);
+            push_type_rel(&rel->t2, &rel->t1);
         else if (rel->t1->typ == FN || rel->t1->typ == LAMBDA)
         {
             if ((rel->t2->typ != FN && rel->t2->typ != LAMBDA) || rel->t1->arity != rel->t2->arity)
                 exception("Type mismatch: function type not matched!\n");
-            push_type_rel(rel->t1->ret, rel->t2->ret);
+            push_type_rel(&rel->t1->ret, &rel->t2->ret);
             for (i = 0; i < rel->t1->arity; i++)
-                push_type_rel(rel->t1->param[i], rel->t2->param[i]);
+                push_type_rel(&rel->t1->param[i], &rel->t2->param[i]);
         }
         else if (rel->t1->typ == TUPLE)
         {
             if (rel->t2->typ != TUPLE || rel->t1->arity != rel->t2->arity)
                 exception("Type mismatch: tuple type not matched!\n");
             for (i = 0; i < rel->t1->arity; i++)
-                push_type_rel(rel->t1->param[i], rel->t2->param[i]);
+                push_type_rel(&rel->t1->param[i], &rel->t2->param[i]);
         }
         else if (rel->t1->typ == ARRAY)
         {
             if (rel->t2->typ != ARRAY)
                 exception("Type mismatch: array type not matched!\n");
-            push_type_rel(rel->t1->ret, rel->t2->ret);
+            push_type_rel(&rel->t1->ret, &rel->t2->ret);
         }
         else if (rel->t1->typ == DATATYPE)
         {
@@ -165,40 +342,57 @@ void unify(type_rel_t * rels, type_rel_t * ass)
                 if (rel->t1->arity != rel->t2->arity || rel->t1->sym != rel->t2->sym)
                     exception("Type mismatch: data type not matched!\n");
                 for (i = 0; i < rel->t1->arity; i++)
-                    push_type_rel(rel->t1->param[i], rel->t2->param[i]);
+                    push_type_rel(&rel->t1->param[i], &rel->t2->param[i]);
             } else /* one of the data types is not full */
             {
                 if (rel->t1->sym == NULL) /* switch order */
-                    push_type_rel(rel->t2, rel->t1);
+                    push_type_rel(&rel->t2, &rel->t1);
                 else /* compare partial datatype with full */
                 {
-                    for (i = 0; i < rel->t1->arity; i++)
-                        if (rel->t1->slot[i] == rel->t2->slot[0])
-                            break;
-                    if (i == rel->t1->arity) /* slot was not found */
-                        exception("Nonexistent slot!\n");
-                    /* check type of slot is right */
-                    push_type_rel(rel->t1->param[i], rel->t2->param[0]);
+                    for (j = 0; j < rel->t2->arity; j++)
+                    {
+                        for (i = 0; i < rel->t1->arity; i++)
+                        {
+                            if (rel->t1->slot[i] == rel->t2->slot[j])
+                                break;
+                        }
+                        if (i == rel->t1->arity) /* slot was not found */
+                            exception("Nonexistent slot!\n");
+                        /* check type of slot is right */
+                        push_type_rel(&rel->t1->param[i], &rel->t2->param[j]);
+                    }
 
                     /* update partial type */
-                    type_t * t = rel->t2->param[0];
-                    rel->t2->param = (type_t **) GC_MALLOC(rel->t1->arity*sizeof(type_t *));
-                    rel->t2->slot = (sym_t **) GC_MALLOC(rel->t1->arity*sizeof(sym_t *));
+                    type_t ** pp = (type_t **) GC_MALLOC(rel->t1->arity*sizeof(type_t *));
+                    sym_t ** ss = (sym_t **) GC_MALLOC(rel->t1->arity*sizeof(sym_t *));
                     for (j = 0; j < rel->t1->arity; j++)
                     {
-                        rel->t2->param[j] = rel->t1->param[j]; 
-                        rel->t2->slot[j] = rel->t1->slot[j]; 
+                        pp[j] = rel->t1->param[j]; 
+                        ss[j] = rel->t1->slot[j]; 
                     }
+                    
+                    /* restore partial types for slots */
+                    for (j = 0; j < rel->t1->arity; j++)
+                    {
+                       for (i = 0; i < rel->t2->arity; i++)
+                       {
+                           if (rel->t1->slot[j] == rel->t2->slot[i])
+                           {
+                               pp[j] = rel->t2->param[i]; 
+                               break;
+                           }
+                       }
+                    }
+                    rel->t2->param = pp;
+                    rel->t2->slot = ss;
+
                     rel->t2->sym = rel->t1->sym;
                     rel->t2->arity = rel->t1->arity;
-
-                    /* restore partial type for slot */
-                    rel->t2->param[i] = t; 
                 }
             }
         }
         else if (rel->t1->typ != rel->t2->typ)
-           exception("Type mismatch!\n");
+            exception("Type mismatch!\n");
     }
 }
 
@@ -349,7 +543,7 @@ void annotate_ast(ast_t * a)
         annotate_ast(a->child->next);
         annotate_ast(a->child);
         a->type = a->child->type;
-        push_type_rel(a->type, a->child->next->type);
+        push_type_rel(&a->type, &a->child->next->type);
         break;
     case AST_ASSIGNMENT:
         id = a->child;
@@ -359,7 +553,7 @@ void annotate_ast(ast_t * a)
         if (id->type->typ == FN)
             exception("Attempt to assign to function\n");
         a->type = expr->type;
-        push_type_rel(id->type, expr->type);
+        push_type_rel(&id->type, &expr->type);
         break;
     case AST_LT:
     case AST_GT:
@@ -370,7 +564,7 @@ void annotate_ast(ast_t * a)
         annotate_ast(a->child->next);
         annotate_ast(a->child);
         a->type = t_bool;
-        push_type_rel(a->child->type, a->child->next->type);
+        push_type_rel(&a->child->type, &a->child->next->type);
         break;
     case AST_VARASSIGN:
         p = a->child;
@@ -398,7 +592,7 @@ void annotate_ast(ast_t * a)
                 bind->initialised = 1;
                 annotate_ast(id);
                 p->type = expr->type;
-                push_type_rel(id->type, expr->type);
+                push_type_rel(&id->type, &expr->type);
             } else
             {
                 bind->initialised = 0;
@@ -414,22 +608,22 @@ void annotate_ast(ast_t * a)
         annotate_ast(a->child);
         annotate_ast(a->child->next);
         a->type = t_nil;
-        push_type_rel(a->child->type, t_bool);
+        push_type_rel(&a->child->type, &t_bool);
         break;
     case AST_IFELSE:
         annotate_ast(a->child);
         annotate_ast(a->child->next);
         annotate_ast(a->child->next->next);
         a->type = t_nil;
-        push_type_rel(a->child->type, t_bool);
+        push_type_rel(&a->child->type, &t_bool);
         break;
     case AST_IFEXPR:
         annotate_ast(a->child);
         annotate_ast(a->child->next);
         annotate_ast(a->child->next->next);
         a->type = a->child->next->type;
-        push_type_rel(a->child->type, t_bool);
-        push_type_rel(a->child->next->type, a->child->next->next->type);
+        push_type_rel(&a->child->type, &t_bool);
+        push_type_rel(&a->child->next->type, &a->child->next->next->type);
         break;
     case AST_BLOCK:
         t = a->child;
@@ -450,14 +644,16 @@ void annotate_ast(ast_t * a)
         if (b == NULL)
             exception("Returning outside a function\n");
         if (a->child == NULL)
-            push_type_rel(b->type, t_nil);
+            push_type_rel(&b->type, &t_nil);
         else
         {
             annotate_ast(a->child);
             if (a->child->type->typ == FN) /* need to make return type a lambda */
-                push_type_rel(b->type, fn_to_lambda_type(a->child->type));
-            else
-                push_type_rel(b->type, a->child->type);
+            {
+                type_t * temp = fn_to_lambda_type(a->child->type);
+                push_type_rel(&b->type, &temp);
+            } else
+                push_type_rel(&b->type, &a->child->type);
         }
         a->type = t_nil;
         break;
@@ -569,7 +765,7 @@ void annotate_ast(ast_t * a)
             annotate_ast(expr);
         }
         t->type = expr->type;
-        push_type_rel(bind->type, t->type);
+        push_type_rel(&bind->type, &t->type);
         
         scope_down();
         break;
@@ -588,7 +784,7 @@ void annotate_ast(ast_t * a)
                 exception("Unknown function or datatype\n");
         } else /* we may not have an identifier giving the function */
             annotate_ast(id);
-
+        
         /* count arguments */
         p = id->next;
         count = ast_list_length(p);
@@ -602,10 +798,18 @@ void annotate_ast(ast_t * a)
                 param[i] = new_typevar();
             type_t * fn_ty = fn_type(new_typevar(), count, param);
             fn_ty->typ = LAMBDA;
-
+            
             /* use it instead and infer the typevar */
-            push_type_rel(id->type, fn_ty);
+            push_type_rel(&id->type, &fn_ty);
             id->type = fn_ty;
+            
+            /* update binding */
+            if (id->sym != NULL)
+            {
+                bind = find_symbol(id->sym);
+                bind->type = id->type;
+                id->bind = bind;
+            }
         } else if (count != id->type->arity) /* check number of parameters */
         {
             if (id->type->typ == FN || id->type->typ == LAMBDA)
@@ -613,15 +817,17 @@ void annotate_ast(ast_t * a)
             else /* DATATYPE */
                 exception("Wrong number of parameters in type constructor\n");
         }
-
+        
         /* get parameter types */
         for (i = 0; i < count; i++)
         {
             annotate_ast(p);
             if (p->type->typ == FN) /* need to make type a lambda */
-                push_type_rel(id->type->param[i], fn_to_lambda_type(p->type));
-            else
-                push_type_rel(id->type->param[i], p->type);
+            {
+                type_t * temp = fn_to_lambda_type(p->type);
+                push_type_rel(&id->type->param[i], &temp);
+            } else
+                push_type_rel(&id->type->param[i], &p->type);
             p = p->next;
         }
 
@@ -676,6 +882,7 @@ void annotate_ast(ast_t * a)
         /* make binding */
         id->type = data_type(count, param, id->sym, slot);
         bind = bind_datatype(id->sym, id->type, a);
+        bind->typeval = NULL;
 
         a->type = id->type;
         break;
@@ -698,13 +905,13 @@ void annotate_ast(ast_t * a)
         {
             b = find_symbol(id->sym);
             if (b != NULL && b->initialised)
-                push_type_rel(b->type, id->type);
+                push_type_rel(&b->type, &id->type);
         }
         annotate_ast(id);
 
         /* join types up */
         if (ty != id->type)
-            push_type_rel(ty, id->type);
+            push_type_rel(&ty, &id->type);
         break;
     case AST_LOCATION:
         id = a->child;
@@ -721,23 +928,23 @@ void annotate_ast(ast_t * a)
         {
             b = find_symbol(id->sym);
             if (b != NULL && b->initialised)
-                push_type_rel(b->type, id->type);
+                push_type_rel(&b->type, &id->type);
         }
         annotate_ast(id);
 
         /* join types up */
         if (ty != id->type)
-            push_type_rel(ty, id->type);
+            push_type_rel(&ty, &id->type);
         
         /* ensure index is an integer */
         annotate_ast(p);
-        push_type_rel(p->type, t_int);
+        push_type_rel(&p->type, &t_int);
         break;
     case AST_ARRAY:
         p = a->child;
         annotate_ast(p);
         /* the parameter is an integer */
-        push_type_rel(p->type, t_int);
+        push_type_rel(&p->type, &t_int);
         a->type = array_type(new_typevar());
         break;
     }
