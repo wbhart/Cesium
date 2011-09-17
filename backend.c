@@ -398,10 +398,10 @@ LLVMTypeRef tup_type(jit_t * jit, type_t * type)
 {
     bind_t * bind = find_symbol(type->sym);
 
-    if (bind->typeval != NULL) 
+    if (bind != NULL && bind->typeval != NULL) 
         return bind->typeval;
     
-    if (type->recursive)
+    if (bind != NULL && type->recursive)
         bind->typeval = LLVMOpaqueType();
     
     int params = type->arity;
@@ -413,10 +413,11 @@ LLVMTypeRef tup_type(jit_t * jit, type_t * type)
     
     /* make LLVM struct type */
     LLVMTypeRef s = LLVMStructType(args, params, 1);
-    if (bind->typeval != NULL)
+    if (bind != NULL && bind->typeval != NULL)
         LLVMRefineType(bind->typeval, s);
 
-    bind->typeval = s;
+    if (bind != NULL)
+        bind->typeval = s;
 
     return s;
 }
