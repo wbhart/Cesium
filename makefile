@@ -3,7 +3,7 @@ CS_INC=-I/usr/local/include -I$(CS_GC_INC)
 CS_FLAGS=-O2 -g -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS
 
 all: parser.c symbol.o ast.o types.o unify.o environment.o backend.o cesium.c exception.o
-	g++ $(CS_FLAGS) $(CS_INC) $(CS_LIBS) cesium.c symbol.o ast.o types.o unify.o environment.o backend.o exception.o -lgc `/usr/local/bin/llvm-config --libs --cflags --ldflags core analysis executionengine jit interpreter native` -o cs
+	g++ $(CS_FLAGS) $(CS_INC) $(CS_LIBS) cesium.c symbol.o ast.o types.o unify.o environment.o backend.o exception.o -lgc `/usr/local/bin/llvm-config --libs --cflags --ldflags core analysis executionengine jit interpreter native` -lpthread -ldl -lncurses -o cs
 
 parser.c: greg parser.leg
 	greg-0.4.3/greg -o parser.c parser.leg
